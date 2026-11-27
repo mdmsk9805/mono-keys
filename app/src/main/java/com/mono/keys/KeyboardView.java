@@ -130,6 +130,8 @@ public class KeyboardView extends View {
     @Override protected void onDetachedFromWindow() { stopRepeat(); super.onDetachedFromWindow(); }
     @Override protected void onWindowVisibilityChanged(int v) { if (v != VISIBLE) stopRepeat(); super.onWindowVisibilityChanged(v); }
 
+    int stripCount() { return stripRects.size(); }
+    RectF stripRectForTest(int i) { return new RectF(stripRects.get(i)); }
     List<String> candidatesForTest() { return new ArrayList<>(candidates); }
 
     /** Test hook: centre of strip chip i from the last draw. */
@@ -164,8 +166,16 @@ public class KeyboardView extends View {
 
     public void setShifted(boolean s) { shifted = s; invalidate(); }
 
+    // style picker: one horizontally scrollable row of fixed-size chips (no shrinking, no overlap)
+    private float styleScroll = 0f, styleDownX = 0f, styleScrollStart = 0f;
+    private boolean styleTouch = false, styleDragging = false, styleReveal = false;
+    private int styleTapIdx = -1;
+
     public void setCandidates(List<String> c, boolean styles) {
-        candidates.clear(); candidates.addAll(c); stripIsStyles = styles; invalidate();
+        boolean opening = styles && !stripIsStyles;
+        candidates.clear(); candidates.addAll(c); stripIsStyles = styles;
+        if (opening) { styleReveal = true; styleScroll = 0f; }
+        invalidate();
     }
 
     private static Typeface safeFont(Context ctx, String path) {
@@ -328,6 +338,7 @@ public class KeyboardView extends View {
             c.drawText(hint, w / 2, stripH / 2 + dp(6), textPaint);
             return;
         }
+        if (stripIsStyles) { drawStyleStrip(c, w, stripH, gap); return; }
         int n = candidates.size();
         float[] ws = new float[n];
         float total = gap * (n - 1);
@@ -354,6 +365,42 @@ public class KeyboardView extends View {
             c.drawText(candidates.get(i), r.centerX(), r.centerY() + dp(6), textPaint);
             x += ws[i] + gap;
         }
+    }
+
+    private void drawStyleStrip(Canvas c, float w, float stripH, float gap) {
+        int n = candidates.size();
+        textPaint.setTypeface(Typeface.DEFAULT_BOLD);
+        textPaint.setTextSize(dp(14));
+        float[] cw = new float[n];
+        float total = dp(8) * 2 + gap * Math.max(0, n - 1);
+        float activeLeft = 0, activeRight = 0, run = dp(8);
+        for (int i = 0; i < n; i++) {
+            cw[i] = Math.max(dp(64), textPaint.measureText(candidates.get(i)) + dp(28));
+            total += cw[i];
+            if (candidates.get(i).equals(activeStyle)) { activeLeft = run; activeRight = run + cw[i]; }
+            run += cw[i] + gap;
+        }
+        float maxScroll = Math.max(0, total - w);
+        if (styleReveal) {
+            if (activeRight - styleScroll > w - dp(8)) styleScroll = activeRight - w + dp(8);
+            if (activeLeft - styleScroll < dp(8)) styleScroll = Math.max(0, activeLeft - dp(8));
+            styleReveal = false;
+        }
+        styleScroll = Math.max(0, Math.min(styleScroll, maxScroll));
+        c.save();
+        c.clipRect(0, 0, w, stripH);
+        float x = dp(8) - styleScroll;
+        for (int i = 0; i < n; i++) {
+            RectF r = new RectF(x, dp(5), x + cw[i], stripH - dp(5));
+            stripRects.add(r);
+            boolean act = candidates.get(i).equals(activeStyle);
+            keyPaint.setColor(act ? theme.accent : theme.keyBg);
+            c.drawRoundRect(r, dp(8), dp(8), keyPaint);
+            textPaint.setColor(act ? 0xFFFFFFFF : theme.keyText);
+            c.drawText(candidates.get(i), r.centerX(), r.centerY() + dp(5), textPaint);
+            x += cw[i] + gap;
+        }
+        c.restore();
     }
 
     private static int shade(int color) {
@@ -391,22 +438,39 @@ public class KeyboardView extends View {
                     listener.onKey("⌫", A_BACK);                         // first delete on press
                     lpHandler.postDelayed(repeatDelete, 400);            // then repeat while held
                 }
-                if (pressedIdx < 0) {
+                if (pressedIdx < 0 && stripIsStyles && y < dp(44)) {
+                    styleTouch = true; styleDragging = false; styleDownX = x; styleScrollStart = styleScroll;
+                    styleTapIdx = findStrip(x, y);
+                } else if (pressedIdx < 0) {
                     int ci = findStrip(x, y);
                     if (ci >= 0 && listener != null) listener.onCandidate(ci);
                 }
                 invalidate();
                 return true;
             case MotionEvent.ACTION_MOVE:
+                if (styleTouch) {
+                    if (Math.abs(x - styleDownX) > dp(8)) styleDragging = true;
+                    if (styleDragging) { styleScroll = styleScrollStart - (x - styleDownX); invalidate(); }
+                    return true;
+                }
                 { int ni = findKey(x, y); if (ni != pressedIdx) { lpHandler.removeCallbacks(longPress); stopRepeat(); } pressedIdx = ni; }
                 invalidate();
                 return true;
             case MotionEvent.ACTION_CANCEL:
+                styleTouch = false; styleDragging = false;
                 stopRepeat();
                 pressedIdx = -1;
                 invalidate();
                 return true;
             case MotionEvent.ACTION_UP:
+                if (styleTouch) {
+                    boolean tap = !styleDragging && styleTapIdx >= 0 && findStrip(x, y) == styleTapIdx;
+                    int ti = styleTapIdx;
+                    styleTouch = false; styleDragging = false; styleTapIdx = -1;
+                    if (tap && listener != null) listener.onCandidate(ti);
+                    invalidate();
+                    return true;
+                }
                 stopRepeat();
                 int idx = findKey(x, y);
                 if (!longFired && idx >= 0 && idx == pressedIdx && listener != null) {
