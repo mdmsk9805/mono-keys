@@ -16,7 +16,7 @@ import java.util.List;
  *  rounded keys, big touch targets, dot-matrix accent font (Doto). */
 public class KeyboardView extends View {
     public static final int A_TEXT = 0, A_BACK = 1, A_ENTER = 2, A_SHIFT = 3,
-        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9;
+        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9, A_BNMODE = 10;
 
     public interface Listener {
         void onKey(String text, int action);
@@ -109,6 +109,27 @@ public class KeyboardView extends View {
         }
     };
 
+    private boolean repeating = false;
+    private int repeatCount = 0;
+    private final Runnable repeatDelete = new Runnable() {
+        @Override public void run() {
+            if (!repeating || listener == null) return;
+            repeatCount++;
+            listener.onKey("⌫", A_BACK);
+            lpHandler.postDelayed(this, repeatCount > 12 ? 30 : 60);
+        }
+    };
+
+    /** Stops press-and-hold repeat (release, cancel, focus change, hide). */
+    public void stopRepeat() {
+        repeating = false; repeatCount = 0;
+        lpHandler.removeCallbacks(repeatDelete);
+        lpHandler.removeCallbacks(longPress);
+    }
+
+    @Override protected void onDetachedFromWindow() { stopRepeat(); super.onDetachedFromWindow(); }
+    @Override protected void onWindowVisibilityChanged(int v) { if (v != VISIBLE) stopRepeat(); super.onWindowVisibilityChanged(v); }
+
     /** Test hook: centre of the first key with this label from the last draw. */
     float[] keyCenter(String label) {
         for (int i = 0; i < flatKeys.size(); i++)
@@ -187,6 +208,7 @@ public class KeyboardView extends View {
                     Key bk = new Key(main, small, 1f, A_TEXT);
                     if (main.equals("য়") || main.equals("য")) bk.longText = "্য";
                     if (shifted && main.equals("উ")) bk.longText = "ৎ";
+                    if (bk.longText == null && small != null && !small.isEmpty()) bk.longText = small; // hold = corner character
                     row.add(bk);
                 }
                 if (r == 2) row.add(new Key("⌫", 1.2f, A_BACK));
@@ -282,7 +304,7 @@ public class KeyboardView extends View {
         if (candidates.isEmpty()) {
             textPaint.setTypeface(doto);
             textPaint.setColor(theme.stripText);
-            String hint = (mode.equals("bn_direct") || mode.equals("bn_phon")) ? "বাংলা" : mode.equals("sym") ? "123"
+            String hint = mode.equals("bn_direct") ? "বাংলা · DIRECT ⇄" : mode.equals("bn_phon") ? "বাংলা · PHONETIC ⇄" : mode.equals("sym") ? "123"
                     : activeStyle.equals("Normal") ? "MONO KEYS" : activeStyle.toUpperCase();
             c.drawText(hint, w / 2, stripH / 2 + dp(6), textPaint);
             return;
@@ -336,9 +358,20 @@ public class KeyboardView extends View {
             case MotionEvent.ACTION_DOWN:
                 longFired = false;
                 pressedIdx = findKey(x, y);
+                if (pressedIdx < 0 && candidates.isEmpty() && y < dp(44)
+                        && (mode.equals("bn_direct") || mode.equals("bn_phon")) && listener != null) {
+                    listener.onKey("", A_BNMODE); // tap the mode label to switch direct/phonetic
+                    return true;
+                }
                 lpHandler.removeCallbacks(longPress);
                 if (pressedIdx >= 0 && flatKeys.get(pressedIdx).longText != null)
                     lpHandler.postDelayed(longPress, 400);
+                if (pressedIdx >= 0 && flatKeys.get(pressedIdx).action == A_BACK && listener != null) {
+                    stopRepeat();
+                    repeating = true; repeatCount = 0; longFired = true; // suppress the on-release tap
+                    listener.onKey("⌫", A_BACK);                         // first delete on press
+                    lpHandler.postDelayed(repeatDelete, 400);            // then repeat while held
+                }
                 if (pressedIdx < 0) {
                     int ci = findStrip(x, y);
                     if (ci >= 0 && listener != null) listener.onCandidate(ci);
@@ -346,11 +379,16 @@ public class KeyboardView extends View {
                 invalidate();
                 return true;
             case MotionEvent.ACTION_MOVE:
-                { int ni = findKey(x, y); if (ni != pressedIdx) lpHandler.removeCallbacks(longPress); pressedIdx = ni; }
+                { int ni = findKey(x, y); if (ni != pressedIdx) { lpHandler.removeCallbacks(longPress); stopRepeat(); } pressedIdx = ni; }
+                invalidate();
+                return true;
+            case MotionEvent.ACTION_CANCEL:
+                stopRepeat();
+                pressedIdx = -1;
                 invalidate();
                 return true;
             case MotionEvent.ACTION_UP:
-                lpHandler.removeCallbacks(longPress);
+                stopRepeat();
                 int idx = findKey(x, y);
                 if (!longFired && idx >= 0 && idx == pressedIdx && listener != null) {
                     Key k = flatKeys.get(idx);
