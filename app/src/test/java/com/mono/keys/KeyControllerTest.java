@@ -482,6 +482,34 @@ public class KeyControllerTest {
         assertFalse(strip.last.contains("\u0986\u09AE\u09BF"));
     }
 
+    @Test public void banglaKarToggleStaysAfterKarAndLongWordReplaces() throws Exception {
+        prefs.map.put("bn_mode", "direct");
+        ctl = new KeyController(() -> ic, strip, prefs, store);
+        ctl.setBanglaDictionary(bnDict());
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("\u0985", KeyboardView.A_LANG);
+        typeKeys("\u0986\u09AE");
+        ctl.onCandidate(strip.last.size() - 1); // open kar chips
+        ctl.onCandidate(0);                     // tap a-kar
+        assertEquals("\u0986\u09AE\u09BE", text());
+        List<String> c = new ArrayList<>(strip.last);
+        assertTrue("max 3 suggestions + toggle: " + c, c.size() <= 4);
+        assertEquals(KeyController.KAR_TOGGLE, c.get(c.size() - 1));
+        ctl.onCandidate(c.size() - 1); // kar access after a kar
+        assertEquals(10, strip.last.size());
+        ctl.onCandidate(0);            // second kar appended
+        assertEquals(4, text().codePointCount(0, text().length()));
+        // keep typing a consonant, then pick a longer suggestion: whole typed word replaced
+        typeKeys("\u09B0");
+        List<String> c3 = new ArrayList<>(strip.last);
+        assertEquals(KeyController.KAR_TOGGLE, c3.get(c3.size() - 1));
+        if (c3.size() > 1) {
+            String pick = c3.get(0);
+            ctl.onCandidate(0);
+            assertEquals(pick + " ", text());
+        }
+    }
+
     @Test public void banglaSuggestionsOffInPasswordAndWithoutDictionaryKarStillWork() throws Exception {
         startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         ctl.setBanglaDictionary(bnDict());
