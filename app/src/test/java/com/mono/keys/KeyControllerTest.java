@@ -325,4 +325,106 @@ public class KeyControllerTest {
         assertEquals("ঁ", KeyboardView.BN_SHIFT[2][8]);
         assertEquals("ৎ".length(), 1);
     }
+
+    @Test public void modeLabelTapSwitchesDirectAndPhoneticAndPersists() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        assertEquals("bn_direct", strip.mode);
+        ctl.onKey("", KeyboardView.A_BNMODE);
+        assertEquals("bn_phon", strip.mode);
+        assertEquals("phonetic", prefs.map.get("bn_mode"));
+        ctl.onKey("", KeyboardView.A_BNMODE);
+        assertEquals("bn_direct", strip.mode);
+        assertEquals("direct", prefs.map.get("bn_mode"));
+    }
+
+    @Test public void staleViewModeIsCorrectedToSavedSettingOnFocus() {
+        prefs.map.put("bn_mode", "direct");
+        ctl = new KeyController(() -> ic, strip, prefs, store);
+        strip.mode = "bn_phon"; // view left in phonetic from an older setting
+        startField(InputType.TYPE_CLASS_TEXT);
+        assertEquals("bn_direct", strip.mode);
+    }
+
+    @Test public void fancyEnglishStyleDoesNotTouchBanglaPhonetic() {
+        prefs.map.put("bn_mode", "phonetic");
+        prefs.map.put("style", "Bold");
+        ctl = new KeyController(() -> ic, strip, prefs, store);
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        assertEquals("bn_phon", strip.mode);
+        typeKeys("ami");
+        assertEquals("ami", text()); // plain roman while composing, not bold
+        assertEquals("আমি", strip.last.get(0));
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals("আমি ", text());
+        ctl.onKey("", KeyboardView.A_LANG); // back to English: style applies again
+        typeKeys("a");
+        assertEquals("আমি \uD835\uDC1A", text()); // bold a
+    }
+
+    private WordDictionary realDict() throws Exception {
+        java.io.File f = new java.io.File("src/main/assets/words_en.txt");
+        return WordDictionary.load(new java.io.FileInputStream(f));
+    }
+
+    @Test public void dictionaryHasRealSize() throws Exception {
+        WordDictionary d = realDict();
+        assertTrue(d.size() >= 29000);
+        assertTrue(d.contains("keyboard") || d.contains("keyboards"));
+        assertTrue(d.contains("tomorrow") && d.contains("because"));
+    }
+
+    @Test public void englishSuggestionsCompleteAndCorrectWithoutSilentChange() throws Exception {
+        ctl.setDictionary(realDict());
+        startField(InputType.TYPE_CLASS_TEXT);
+        typeKeys("tomor");
+        assertTrue(strip.last.contains("tomorrow"));
+        assertEquals("tomor", text()); // nothing changed by itself
+        ctl.onCandidate(strip.last.indexOf("tomorrow"));
+        assertEquals("tomorrow ", text());
+        typeKeys("becuase"); // typo: offered, not auto-applied
+        assertEquals("tomorrow becuase", text());
+        assertTrue(strip.last.contains("because"));
+        ctl.onCandidate(strip.last.indexOf("because"));
+        assertEquals("tomorrow because ", text());
+    }
+
+    @Test public void suggestionKeepsCapitalAndSkipsStyledBanglaAndPassword() throws Exception {
+        ctl.setDictionary(realDict());
+        startField(InputType.TYPE_CLASS_TEXT);
+        strip.shift = true; typeKeys("t"); typeKeys("omor");
+        ctl.onCandidate(strip.last.indexOf("Tomorrow"));
+        assertEquals("Tomorrow ", text());
+        // password: no suggestions at all
+        editor.setText("");
+        ic = new BaseInputConnection(editor, true);
+        startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        typeKeys("tomor");
+        assertTrue(strip.last.isEmpty());
+        // fancy style: no dictionary (styled glyphs are not the plain word)
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("Aa", KeyboardView.A_STYLE); ctl.onCandidate(1);
+        typeKeys("tomor");
+        assertTrue(strip.last.isEmpty());
+    }
+
+    @Test public void editDistanceMatching() {
+        assertTrue(WordDictionary.oneEdit("becuase", "because")); // swap
+        assertTrue(WordDictionary.oneEdit("helo", "hello"));
+        assertTrue(WordDictionary.oneEdit("cat", "cut"));
+        assertFalse(WordDictionary.oneEdit("cat", "dog"));
+    }
+
+    @Test public void repeatedBackspaceIsUnicodeSafe() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ic.commitText("a\uD835\uDC07\uD835\uDC22\u0995\u09BE", 1);
+        for (int i = 0; i < 3; i++) ctl.onKey("⌫", KeyboardView.A_BACK);
+        assertEquals("a\uD835\uDC07", text()); // surrogate pair kept whole until its turn
+        ctl.onKey("⌫", KeyboardView.A_BACK);
+        assertEquals("a", text());
+        ctl.onKey("⌫", KeyboardView.A_BACK);
+        ctl.onKey("⌫", KeyboardView.A_BACK); // extra repeats on empty text are harmless
+        assertEquals("", text());
+    }
 }
