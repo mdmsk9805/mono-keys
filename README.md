@@ -48,8 +48,11 @@ double-space to choose `.`, `,` or `।`.
 
 Suggestions show on the strip: completions first, then one-edit spelling fixes. Nothing is ever changed unless you tap a suggestion. They work with the fancy text styles too (the suggested word is re-styled). They are off in password fields and in Bangla. No learning of your own words, no next-word prediction, no Bangla dictionary.
 
+## Bangla suggestions
+`app/src/main/assets/words_bn.txt` is a list of about 23,700 Bangla words, most frequent first, from hermitdave/FrequencyWords `bn_50k.txt` (2018, OpenSubtitles; CC BY-SA 4.0, see `licenses/FrequencyWords-CC-BY-SA-4.0.txt`), keeping entries seen at least 5 times that are pure Bangla letters. It comes from film and TV subtitles: conversational, with spelling variants and names, and it is missing many technical or newer words (for example ক্লিপবোর্ড). Coverage is real but modest. Suggestions appear in Direct Bangla mode: after a consonant you get up to 3 suggestions plus a chip with া ি ু … that switches the strip to the kar choices, so kar access is never lost. Tapping a suggestion replaces the whole typed word and adds a space. No spelling correction for Bangla, no learning, off in password fields. Regenerate with `tools/build_wordlist.py` (Bangla step documented there).
+
 ## Clipboard panel
-?123 page, key "CLIP". Shows up to 20 recent copies made while this keyboard was running, newest first; tap one to insert it, "CLEAR ALL" empties the list. The list lives only in memory: it is never written to disk, never leaves the phone, and disappears when Android stops the keyboard process (this can happen at any time). Clips Android marks as sensitive (API 33+) are skipped, texts over 2,000 characters are skipped, and the panel does not open in password fields. It only sees copies made after the keyboard started, plus the current clip when you open the panel.
+?123 page, key "CLIP". Shows up to 20 recent copies (four per page; PREV and NEXT keys, page counter in the middle) made while this keyboard was running, newest first; tap one to insert it, "CLEAR" empties the list. The list lives only in memory: it is never written to disk, never leaves the phone, and disappears when Android stops the keyboard process (this can happen at any time). Clips Android marks as sensitive (API 33+) are skipped, texts over 2,000 characters are skipped, and the panel does not open in password fields. It only sees copies made after the keyboard started, plus the current clip when you open the panel.
 
 ## Licenses
 
