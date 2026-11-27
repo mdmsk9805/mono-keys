@@ -402,11 +402,22 @@ public class KeyControllerTest {
         startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         typeKeys("tomor");
         assertTrue(strip.last.isEmpty());
-        // fancy style: no dictionary (styled glyphs are not the plain word)
+    }
+
+    @Test public void suggestionsWorkWithFancyStyleAndReplaceStyledWord() throws Exception {
+        ctl.setDictionary(realDict());
         startField(InputType.TYPE_CLASS_TEXT);
-        ctl.onKey("Aa", KeyboardView.A_STYLE); ctl.onCandidate(1);
+        ctl.onKey("Aa", KeyboardView.A_STYLE); ctl.onCandidate(1); // Bold
         typeKeys("tomor");
-        assertTrue(strip.last.isEmpty());
+        assertTrue(strip.last.contains("tomorrow"));
+        ctl.onCandidate(strip.last.indexOf("tomorrow"));
+        assertEquals("\uD835\uDC2D\uD835\uDC28\uD835\uDC26\uD835\uDC28\uD835\uDC2B\uD835\uDC2B\uD835\uDC28\uD835\uDC30 ", text());
+        // backspacing a styled letter then picking still replaces exactly the shown word
+        typeKeys("becuasx");
+        ctl.onKey("\u232B", KeyboardView.A_BACK);
+        typeKeys("e");
+        ctl.onCandidate(strip.last.indexOf("because"));
+        assertEquals(17 + 15, text().length()); // 8 styled letters + space, 7 styled letters + space
     }
 
     @Test public void editDistanceMatching() {
