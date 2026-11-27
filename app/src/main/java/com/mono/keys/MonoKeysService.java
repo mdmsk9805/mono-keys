@@ -52,7 +52,7 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
         super.onStartInputView(info, restarting);
         applyTheme();
         if (ctl != null) {
-            ctl.bnMode = prefs.getString("bn_mode", "phonetic");
+            ctl.bnMode = prefs.getString("bn_mode", "direct");
             ctl.style = prefs.getString("style", "Normal");
             ctl.onStartInput(info);
         }
