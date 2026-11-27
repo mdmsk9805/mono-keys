@@ -97,9 +97,11 @@ public class KeyControllerTest {
     }
 
     @Test public void phoneticTypingCommitsBangla() {
+        prefs.map.put("bn_mode", "phonetic");
+        ctl = new KeyController(() -> ic, strip, prefs, store);
         startField(InputType.TYPE_CLASS_TEXT);
-        ctl.onKey("বাং", KeyboardView.A_LANG); // to Bangla (phonetic default)
-        assertEquals("bn_direct", strip.mode);
+        ctl.onKey("বাং", KeyboardView.A_LANG); // to Bangla, phonetic setting
+        assertEquals("bn_phon", strip.mode);
         typeKeys("ami");
         assertEquals("ami", text()); // composing shows roman
         assertEquals("আমি", strip.last.get(0)); // candidate preview
@@ -202,5 +204,103 @@ public class KeyControllerTest {
         ic.commitText("\u0995\u09BE", 1);
         ctl.onKey("", KeyboardView.A_BACK);
         assertEquals("\u0995", text());
+    }
+
+    @Test public void karOptionsAppearAfterConsonantAndInsertOnlyTheMark() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        assertEquals("bn_direct", strip.mode);
+        ctl.onKey("ম", KeyboardView.A_TEXT);
+        assertEquals(10, strip.last.size());
+        assertEquals("মা", strip.last.get(0));
+        assertEquals("মৌ", strip.last.get(9));
+        ctl.onCandidate(6); // ে
+        assertEquals("মে", text());
+        assertTrue(strip.last.isEmpty());
+        ctl.onKey("া", KeyboardView.A_TEXT); // vowel sign: no kar strip
+        assertTrue(strip.last.isEmpty());
+    }
+
+    @Test public void karStripNotShownForVowelsOrEnglishOrPassword() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        typeKeys("m");
+        assertTrue(strip.last.isEmpty());
+        ctl.onKey("", KeyboardView.A_LANG);
+        ctl.onKey("অ", KeyboardView.A_TEXT);
+        assertTrue(strip.last.isEmpty());
+        startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        ctl.onKey("ম", KeyboardView.A_TEXT);
+        assertTrue(strip.last.isEmpty());
+    }
+
+    @Test public void spaceReturnsToBaseLayerAndShiftIsOneShot() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        ctl.onKey("⇧", KeyboardView.A_SHIFT);
+        assertTrue(strip.shift);
+        ctl.onKey("ধ", KeyboardView.A_TEXT);
+        assertFalse(strip.shift); // one-shot
+        ctl.onKey("⇧", KeyboardView.A_SHIFT);
+        assertTrue(strip.shift);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertFalse(strip.shift); // space returns to default layer
+    }
+
+    @Test public void doubleSpaceOffersDotOrCommaAndReplacesTrailingSpace() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        typeKeys("hi");
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals("hi ", text());
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals("hi ", text()); // no second space
+        assertEquals(java.util.Arrays.asList(".", ","), strip.last);
+        ctl.onCandidate(0);
+        assertEquals("hi. ", text());
+        assertTrue(strip.last.isEmpty());
+        // comma choice, and typing instead of choosing keeps text clean
+        typeKeys("ok");
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        ctl.onCandidate(1);
+        assertEquals("hi. ok, ", text());
+        typeKeys("a");
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        typeKeys("b");
+        assertEquals("hi. ok, a b", text());
+        assertTrue(strip.last.isEmpty() || !strip.last.contains(","));
+    }
+
+    @Test public void doubleSpaceInBanglaAlsoOffersDanda() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        ctl.onKey("ক", KeyboardView.A_TEXT);
+        ctl.onCandidate(0);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals(java.util.Arrays.asList(".", ",", "।"), strip.last);
+        ctl.onCandidate(2);
+        assertEquals("কা। ", text());
+    }
+
+    @Test public void doubleSpaceNeverOffersInPasswordField() {
+        startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        typeKeys("a");
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals("a  ", text());
+        assertTrue(strip.last.isEmpty());
+    }
+
+    @Test public void numericPadOpensAndReturns() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("?123", KeyboardView.A_SYM);
+        ctl.onKey("1234", KeyboardView.A_NUM);
+        assertEquals("num", strip.mode);
+        ctl.onKey("7", KeyboardView.A_TEXT);
+        ctl.onKey("0", KeyboardView.A_TEXT);
+        assertEquals("70", text());
+        ctl.onKey("ABC", KeyboardView.A_ABC);
+        assertEquals("en", strip.mode);
     }
 }
