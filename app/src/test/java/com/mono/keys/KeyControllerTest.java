@@ -438,4 +438,61 @@ public class KeyControllerTest {
         ctl.onKey("⌫", KeyboardView.A_BACK); // extra repeats on empty text are harmless
         assertEquals("", text());
     }
+
+    private WordDictionary bnDict() throws Exception {
+        return WordDictionary.load(new java.io.FileInputStream(new java.io.File("src/main/assets/words_bn.txt")));
+    }
+
+    @Test public void banglaDictionaryHasRealSizeAndWords() throws Exception {
+        WordDictionary d = bnDict();
+        assertTrue(d.size() >= 20000);
+        for (String w : new String[]{"\u0986\u09AE\u09BF", "\u09AC\u09BE\u0982\u09B2\u09BE", "\u09AD\u09BE\u09B2\u09CB\u09AC\u09BE\u09B8\u09BF"})
+            assertTrue("missing " + w, d.contains(w));
+    }
+
+    @Test public void banglaSuggestionsKeepKarAccessAndReplaceWholeWord() throws Exception {
+        ctl.setBanglaDictionary(bnDict());
+        prefs.map.put("bn_mode", "direct");
+        ctl = new KeyController(() -> ic, strip, prefs, store);
+        ctl.setBanglaDictionary(bnDict());
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("\u0985", KeyboardView.A_LANG); // to Bangla direct
+        assertEquals("bn_direct", strip.mode);
+        typeKeys("\u0986\u09AE"); // আম, last is a consonant
+        List<String> chips = new ArrayList<>(strip.last);
+        assertTrue("suggestions shown: " + chips, chips.size() >= 2);
+        assertEquals("kar toggle is the last chip", KeyController.KAR_TOGGLE, chips.get(chips.size() - 1));
+        assertTrue(chips.get(0).startsWith("\u0986\u09AE"));
+        // kar access: toggle opens the kar chips for the last consonant
+        ctl.onCandidate(chips.size() - 1);
+        assertEquals(10, strip.last.size());
+        assertEquals("\u09AE\u09BE", strip.last.get(0));
+        ctl.onCandidate(0); // tap the kar: inserts only the mark
+        assertEquals("\u0986\u09AE\u09BE", text());
+        // now last char is a kar: suggestions only, pick replaces the whole typed word and adds a space
+        List<String> c2 = new ArrayList<>(strip.last);
+        assertFalse(c2.isEmpty());
+        String pick = c2.get(0);
+        assertTrue(pick.startsWith("\u0986\u09AE\u09BE"));
+        ctl.onCandidate(0);
+        assertEquals(pick + " ", text());
+        // english mode and password fields get no Bangla suggestions
+        ctl.onKey("EN", KeyboardView.A_LANG);
+        typeKeys("am");
+        assertFalse(strip.last.contains("\u0986\u09AE\u09BF"));
+    }
+
+    @Test public void banglaSuggestionsOffInPasswordAndWithoutDictionaryKarStillWork() throws Exception {
+        startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        ctl.setBanglaDictionary(bnDict());
+        ctl.onKey("\u0985", KeyboardView.A_LANG);
+        typeKeys("\u0986\u09AE");
+        assertTrue(strip.last.isEmpty());
+        // no dictionary loaded yet: consonant still shows the 10 kar chips
+        ctl = new KeyController(() -> ic, strip, prefs, store);
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("\u0985", KeyboardView.A_LANG);
+        typeKeys("\u0995");
+        assertEquals(10, strip.last.size());
+    }
 }
