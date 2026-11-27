@@ -130,6 +130,11 @@ public class KeyboardView extends View {
     @Override protected void onDetachedFromWindow() { stopRepeat(); super.onDetachedFromWindow(); }
     @Override protected void onWindowVisibilityChanged(int v) { if (v != VISIBLE) stopRepeat(); super.onWindowVisibilityChanged(v); }
 
+    List<String> candidatesForTest() { return new ArrayList<>(candidates); }
+
+    /** Test hook: centre of strip chip i from the last draw. */
+    float[] stripCenter(int i) { return new float[]{stripRects.get(i).centerX(), stripRects.get(i).centerY()}; }
+
     /** Test hook: centre of the first key with this label from the last draw. */
     float[] keyCenter(String label) {
         for (int i = 0; i < flatKeys.size(); i++)
@@ -295,6 +300,20 @@ public class KeyboardView extends View {
                 x += kw + gap;
             }
             y += rowH;
+        }
+        // while a key with a hold alternate is pressed, preview what holding will type
+        if (pressedIdx >= 0 && pressedIdx < flatKeys.size() && flatKeys.get(pressedIdx).longText != null
+                && flatKeys.get(pressedIdx).action == A_TEXT) {
+            RectF kr = keyRects.get(pressedIdx);
+            float bw = Math.max(kr.width(), dp(56)), bh = dp(54);
+            float bx = Math.min(Math.max(kr.centerX() - bw / 2, dp(2)), w - bw - dp(2));
+            RectF bub = new RectF(bx, Math.max(dp(2), kr.top - bh - dp(6)), bx + bw, Math.max(dp(2), kr.top - bh - dp(6)) + bh);
+            keyPaint.setColor(theme.accent);
+            c.drawRoundRect(bub, dp(10), dp(10), keyPaint);
+            textPaint.setTypeface(bengali);
+            textPaint.setColor(0xFFFFFFFF);
+            textPaint.setTextSize(dp(28));
+            c.drawText(flatKeys.get(pressedIdx).longText, bub.centerX(), bub.centerY() + dp(10), textPaint);
         }
     }
 
