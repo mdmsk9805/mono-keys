@@ -32,7 +32,10 @@ public class KeyController {
 
     String bnMode = "direct";
     String style = "Normal";
-    private WordDictionary dict;
+    private WordDictionary dict, bnDict;
+    private boolean karOpen = false, karToggleShown = false;
+    static final String KAR_TOGGLE = "\u09BE \u09BF \u09C1 \u2026"; // া ি ু …
+    public void setBanglaDictionary(WordDictionary d) { bnDict = d; }
     private List<String> dictSugs = new ArrayList<>();
     private boolean wordCap = false;
     public void setDictionary(WordDictionary d) { dict = d; }
@@ -41,7 +44,7 @@ public class KeyController {
     /** UTF-16 length of what was actually committed for each letter of word (styled letters are 2 chars). */
     private final List<Integer> wordLens = new ArrayList<>();
     private int shownLen() { int n = 0; for (int x : wordLens) n += x; return n; }
-    private void resetWord() { word.setLength(0); wordLens.clear(); }
+    private void resetWord() { word.setLength(0); wordLens.clear(); karOpen = false; }
     private String styledWord(String w) {
         StringBuilder sb = new StringBuilder();
         for (int i = 0; i < w.length(); i++) {
@@ -232,6 +235,7 @@ public class KeyController {
     }
 
     private void type(InputConnection ic, String text) {
+        karOpen = false;
         char c = text.length() == 1 ? text.charAt(0) : 0;
         boolean banglaChar = c != 0 && ((c >= 0x0980 && c <= 0x09FF));
         if (banglaPhonetic() && c != 0 && isRoman(c)) {
@@ -315,7 +319,15 @@ public class KeyController {
                 out.add(wordCap ? Character.toUpperCase(w.charAt(0)) + w.substring(1) : w);
             }
         }
-        if (out.isEmpty() && strip.mode().equals("bn_direct") && isBanglaConsonant(lastTyped)) {
+        karToggleShown = false;
+        boolean bnDirect = strip.mode().equals("bn_direct");
+        if (bnDict != null && bnDirect && word.length() > 0 && !karOpen && out.size() < 4 && punctChoices.isEmpty()) {
+            int room = isBanglaConsonant(lastTyped) ? 3 - out.size() : 4 - out.size();
+            if (room > 0) for (String w : bnDict.suggest(word.toString(), room, false)) { dictSugs.add(w); out.add(w); }
+            if (!dictSugs.isEmpty() && isBanglaConsonant(lastTyped)) { out.add(KAR_TOGGLE); karToggleShown = true; }
+        }
+        if (bnDirect && isBanglaConsonant(lastTyped) && (karOpen || out.isEmpty())) {
+            out.clear(); dictSugs = new ArrayList<>(); stripTriggers = new ArrayList<>(); karToggleShown = false;
             for (String k : KAR) { karMarks.add(k); out.add(String.valueOf(lastTyped) + k); }
         }
         strip.show(out, false, banglaPhonetic() && composing.length() > 0);
@@ -345,10 +357,20 @@ public class KeyController {
             updateCandidates();
             return;
         }
+        if (karToggleShown && index == stripTriggers.size() + dictSugs.size()) {
+            karOpen = true;
+            updateCandidates();
+            return;
+        }
         if (!karMarks.isEmpty()) {
-            if (index >= 0 && index < karMarks.size()) ic.commitText(karMarks.get(index), 1);
+            if (index >= 0 && index < karMarks.size()) {
+                String km = karMarks.get(index);
+                ic.commitText(km, 1);
+                word.append(km); wordLens.add(km.length()); // the word goes on, so suggestions can follow
+            } else resetWord();
+            karOpen = false;
             karMarks = new ArrayList<>();
-            lastTyped = 0; resetWord();
+            lastTyped = 0;
             updateCandidates();
             return;
         }
@@ -367,7 +389,8 @@ public class KeyController {
                 && index - stripTriggers.size() < dictSugs.size()) {
             String w = dictSugs.get(index - stripTriggers.size());
             ic.deleteSurroundingText(shownLen(), 0);
-            ic.commitText(styledWord(w) + " ", 1);
+            ic.commitText((strip.mode().equals("bn_direct") ? w : styledWord(w)) + " ", 1);
+            lastTyped = 0;
             resetWord();
         }
         updateCandidates();
