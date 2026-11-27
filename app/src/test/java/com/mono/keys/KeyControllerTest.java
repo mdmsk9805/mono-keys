@@ -121,6 +121,81 @@ public class KeyControllerTest {
         assertTrue(strip.last.isEmpty()); // strip cleared after insert
     }
 
+    @Test public void saveClipAsShortcutThenInsertByTrigger() throws Exception {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.addClip("Sample saved line one\nline two");
+        ctl.onKey("CLIP", KeyboardView.A_CLIP);
+        ctl.onKey("0", KeyboardView.A_CLIPSAVE);
+        assertTrue(ctl.saving());
+        assertEquals("en", strip.mode);
+        assertEquals("Type a name, then SAVE", strip.last.get(0));
+        typeKeys("hi 9!"); // space and ! are not part of a name
+        ctl.onKey("\u0985", KeyboardView.A_TEXT); // Bangla char is not part of a name
+        assertEquals("", text()); // nothing leaked into the field
+        assertEquals("Name: hi9", strip.last.get(0));
+        assertEquals("SAVE", strip.last.get(1));
+        ctl.onCandidate(1);
+        assertFalse(ctl.saving());
+        assertEquals("Saved as \"hi9\"", strip.last.get(0));
+        assertEquals("Sample saved line one\nline two", store.get("hi9"));
+        ctl.onCandidate(0); // dismiss the confirmation chip, inserts nothing
+        assertEquals("", text());
+        typeKeys("hi");
+        assertEquals("hi9", strip.last.get(0)); // trigger name only, never the value
+        ctl.onCandidate(0);
+        assertEquals("Sample saved line one\nline two", text());
+    }
+
+    @Test public void saveNeedsNameCancelsAndReplaceIsLabelled() throws Exception {
+        store.save("abc", "old value");
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.addClip("new value");
+        ctl.onKey("0", KeyboardView.A_CLIPSAVE);
+        ctl.onCandidate(1); // SAVE with no name does nothing
+        assertTrue(ctl.saving());
+        assertEquals("old value", store.get("abc"));
+        typeKeys("abc");
+        assertEquals("REPLACE", strip.last.get(1));
+        ctl.onKey("\u232B", KeyboardView.A_BACK);
+        assertEquals("Name: ab", strip.last.get(0));
+        ctl.onKey("\u232B", KeyboardView.A_BACK); ctl.onKey("\u232B", KeyboardView.A_BACK);
+        typeKeys("abc");
+        ctl.onCandidate(2); // CANCEL
+        assertFalse(ctl.saving());
+        assertEquals("old value", store.get("abc"));
+        ctl.onKey("0", KeyboardView.A_CLIPSAVE);
+        typeKeys("abc");
+        ctl.onCandidate(1); // REPLACE
+        assertEquals("new value", store.get("abc"));
+        assertEquals(1, store.triggers().size());
+    }
+
+    @Test public void saveCurrentFieldTextAndGuards() throws Exception {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("FIELD", KeyboardView.A_CLIPFIELD); // empty field
+        assertFalse(ctl.saving());
+        assertEquals("Nothing to save", strip.last.get(0));
+        typeKeys("my own words");
+        ctl.onKey("FIELD", KeyboardView.A_CLIPFIELD);
+        assertTrue(ctl.saving());
+        typeKeys("mw");
+        ctl.onKey("\n", KeyboardView.A_ENTER); // Enter saves
+        assertEquals("my own words", store.get("mw"));
+        assertEquals("my own words", text()); // field itself is untouched, no newline added
+        // a new field cancels a half-finished save and keeps nothing
+        ctl.onKey("FIELD", KeyboardView.A_CLIPFIELD);
+        typeKeys("zz");
+        startField(InputType.TYPE_CLASS_TEXT);
+        assertFalse(ctl.saving());
+        assertNull(store.get("zz"));
+        // password field: no save from clips or field
+        startField(InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
+        ctl.addClip("pwclip");
+        ctl.onKey("0", KeyboardView.A_CLIPSAVE);
+        ctl.onKey("FIELD", KeyboardView.A_CLIPFIELD);
+        assertFalse(ctl.saving());
+    }
+
     @Test public void passwordFieldIsLockedDown() throws Exception {
         store.save("pw", "secret-snippet");
         prefs.map.put("style", "Bold");
