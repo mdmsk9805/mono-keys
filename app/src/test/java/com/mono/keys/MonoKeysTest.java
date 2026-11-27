@@ -609,7 +609,9 @@ public class MonoKeysTest {
         assertNotEquals("clip", kb.getMode());
     }
 
-    private KeyController clipRig(final KeyboardView kb, final android.view.inputmethod.InputConnection ic) {
+    private KeyController clipRig(final KeyboardView kb, final android.view.inputmethod.InputConnection ic) { return clipRig(kb, ic, null); }
+
+    private KeyController clipRig(final KeyboardView kb, final android.view.inputmethod.InputConnection ic, ShortcutStore st) {
         final java.util.Map<String, String> pm = new java.util.HashMap<>();
         final KeyController ctl = new KeyController(() -> ic, new KeyController.Strip() {
             @Override public void show(List<String> items, boolean styles, boolean phonetic) { kb.setCandidates(items, styles); }
@@ -622,13 +624,47 @@ public class MonoKeysTest {
         }, new KeyController.Prefs() {
             @Override public String get(String k, String d) { return pm.containsKey(k) ? pm.get(k) : d; }
             @Override public void put(String k, String v) { pm.put(k, v); }
-        }, null);
+        }, st);
         kb.setListener(new KeyboardView.Listener() {
             @Override public void onKey(String t, int a) { ctl.onKey(t, a); }
             @Override public void onCandidate(int i) { ctl.onCandidate(i); }
         });
         ctl.onStartInput(new android.view.inputmethod.EditorInfo());
         return ctl;
+    }
+
+    @Test public void saveClipAsShortcutWithRealTouchesAndRenders() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        ShortcutStore st = new ShortcutStore(ctx.getSharedPreferences("t_save_touch", Context.MODE_PRIVATE), softwareBox());
+        for (String t : st.triggers()) st.delete(t);
+        KeyController ctl = clipRig(kb, ic, st);
+        ctl.addClip("Sample text to keep");
+        kb.setMode("en");
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        snap(kb, "kb_clip_save_rows.png");
+        assertNotNull(kb.keyCenter("SAVE"));
+        assertNotNull(kb.keyCenter("FIELD"));
+        tapKey(kb, "SAVE");
+        assertEquals("en", kb.getMode());
+        snap(kb, "kb_save_name_empty.png");
+        for (char ch : "kp".toCharArray()) tapKey(kb, String.valueOf(ch));
+        assertEquals("", edText(ic));
+        snap(kb, "kb_save_name.png");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(1)); // SAVE chip
+        assertEquals("Sample text to keep", st.get("kp"));
+        snap(kb, "kb_save_done.png");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0)); // dismiss confirmation
+        for (char ch : "kp".toCharArray()) tapKey(kb, String.valueOf(ch));
+        assertEquals("kp", kb.candidatesForTest().get(0));
+        snap(kb, "kb_save_trigger.png");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0));
+        assertEquals("Sample text to keep", edText(ic));
     }
 
     @Test public void clipboardPagingReachesAll20AndInsertsExactRow() throws Exception {
