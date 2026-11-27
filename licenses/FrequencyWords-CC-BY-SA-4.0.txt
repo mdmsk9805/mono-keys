@@ -8,3 +8,7 @@ https://creativecommons.org/licenses/by-sa/4.0/legalcode
 Changes made: filtered to words also present in dwyl/english-words
 words_alpha.txt (public domain), truncated to the first 30,000 entries,
 frequency counts removed (order kept).
+
+The same source also provides app/src/main/assets/words_bn.txt (Bangla):
+bn_50k.txt (2018), filtered to entries seen 5 or more times that are pure Bangla letters,
+no digits or danda, duplicates removed, counts removed (order kept). Same licence.
