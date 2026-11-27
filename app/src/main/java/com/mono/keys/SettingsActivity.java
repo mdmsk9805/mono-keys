@@ -183,8 +183,8 @@ public class SettingsActivity extends Activity {
     private LinearLayout choice(String label, String key, String value, LinearLayout next) {
         LinearLayout row = next == null ? new LinearLayout(this) : next;
         row.setOrientation(LinearLayout.VERTICAL);
-        Button b = btn(label + (prefs.getString(key, "").equals(value) ? "  ●" : ""));
-        b.setOnClickListener(v -> { prefs.edit().putString(key, value).apply(); recreate(); });
+        Button b = btn(label + (prefs.getString(key, key.equals("bn_mode") ? "direct" : "").equals(value) ? "  ●" : ""));
+        b.setOnClickListener(v -> { prefs.edit().putString(key, value).putInt("layout_v", 3).apply(); recreate(); });
         row.addView(b, 0);
         return row;
     }
