@@ -37,6 +37,20 @@ public class KeyController {
     public void setDictionary(WordDictionary d) { dict = d; }
     private String lastAlpha = "en";
     private final StringBuilder word = new StringBuilder();
+    /** UTF-16 length of what was actually committed for each letter of word (styled letters are 2 chars). */
+    private final List<Integer> wordLens = new ArrayList<>();
+    private int shownLen() { int n = 0; for (int x : wordLens) n += x; return n; }
+    private void resetWord() { word.setLength(0); wordLens.clear(); }
+    private String styledWord(String w) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < w.length(); i++) {
+            char ch = w.charAt(i);
+            if (i == 0 && wordCap) ch = Character.toUpperCase(ch);
+            String m = UnicodeStyles.map(ch, style);
+            sb.append(m != null ? m : String.valueOf(ch));
+        }
+        return sb.toString();
+    }
     private final StringBuilder composing = new StringBuilder();
     private List<String> stripTriggers = new ArrayList<>();
     private boolean styleStripOpen = false;
@@ -75,7 +89,7 @@ public class KeyController {
         String m = strip.mode();
         if (m.equals("bn_phon") && !bnMode.equals("phonetic")) strip.setMode("bn_direct");
         else if (m.equals("bn_direct") && bnMode.equals("phonetic")) strip.setMode("bn_phon");
-        word.setLength(0);
+        resetWord();
         composing.setLength(0);
         styleStripOpen = false;
         lastTyped = 0; lastWasSpace = false; punctChoices = new ArrayList<>();
@@ -179,6 +193,7 @@ public class KeyController {
         if (end >= 1 && Character.isLowSurrogate(word.charAt(end))
                 && Character.isHighSurrogate(word.charAt(end - 1))) end--;
         word.delete(end, word.length());
+        if (!wordLens.isEmpty()) wordLens.remove(wordLens.size() - 1);
     }
 
     private void type(InputConnection ic, String text) {
@@ -195,11 +210,12 @@ public class KeyController {
             if (!sensitive) {
                 if (word.length() == 0) wordCap = strip.shifted();
                 word.append(Character.toLowerCase(c));
+                wordLens.add((styled != null ? styled : String.valueOf(c)).length());
             }
         } else {
             ic.commitText(text, 1);
-            if (c != 0 && (Character.isLetter(c) || banglaChar) && !sensitive) word.append(Character.toLowerCase(c));
-            else word.setLength(0);
+            if (c != 0 && (Character.isLetter(c) || banglaChar) && !sensitive) { word.append(Character.toLowerCase(c)); wordLens.add(1); }
+            else resetWord();
         }
         lastTyped = (banglaChar && !sensitive) ? c : 0;
         if (strip.shifted()) strip.setShifted(false);
@@ -223,7 +239,7 @@ public class KeyController {
             ic.commitText(BanglaTransliterator.convert(composing.toString()), 1);
             composing.setLength(0);
         }
-        word.setLength(0);
+        resetWord();
     }
 
     private void showStyles() {
@@ -257,7 +273,7 @@ public class KeyController {
                 out.add(hits.get(i)); // trigger name only: saved values are never shown on the strip
             }
         }
-        if (dict != null && strip.mode().equals("en") && style.equals("Normal") && word.length() > 0
+        if (dict != null && strip.mode().equals("en") && word.length() > 0
                 && out.size() < 4 && punctChoices.isEmpty()) {
             for (String w : dict.suggest(word.toString(), 4 - out.size())) {
                 dictSugs.add(w);
@@ -297,7 +313,7 @@ public class KeyController {
         if (!karMarks.isEmpty()) {
             if (index >= 0 && index < karMarks.size()) ic.commitText(karMarks.get(index), 1);
             karMarks = new ArrayList<>();
-            lastTyped = 0; word.setLength(0);
+            lastTyped = 0; resetWord();
             updateCandidates();
             return;
         }
@@ -308,17 +324,16 @@ public class KeyController {
         } else if (!sensitive && index < stripTriggers.size() && store != null) {
             String full = store.get(stripTriggers.get(index));
             if (full != null) {
-                ic.deleteSurroundingText(word.length(), 0);
+                ic.deleteSurroundingText(shownLen(), 0);
                 ic.commitText(full, 1);
             }
-            word.setLength(0);
+            resetWord();
         } else if (!sensitive && !dictSugs.isEmpty() && index >= stripTriggers.size()
                 && index - stripTriggers.size() < dictSugs.size()) {
             String w = dictSugs.get(index - stripTriggers.size());
-            if (wordCap) w = Character.toUpperCase(w.charAt(0)) + w.substring(1);
-            ic.deleteSurroundingText(word.length(), 0);
-            ic.commitText(w + " ", 1);
-            word.setLength(0);
+            ic.deleteSurroundingText(shownLen(), 0);
+            ic.commitText(styledWord(w) + " ", 1);
+            resetWord();
         }
         updateCandidates();
     }
