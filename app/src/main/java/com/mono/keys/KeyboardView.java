@@ -17,7 +17,7 @@ import java.util.List;
 public class KeyboardView extends View {
     public static final int A_TEXT = 0, A_BACK = 1, A_ENTER = 2, A_SHIFT = 3,
         A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9, A_BNMODE = 10,
-        A_CLIP = 11, A_CLIPPICK = 12, A_CLIPCLR = 13, A_NONE = 14, A_CLIPPREV = 15, A_CLIPNEXT = 16;
+        A_CLIP = 11, A_CLIPPICK = 12, A_CLIPCLR = 13, A_NONE = 14, A_CLIPPREV = 15, A_CLIPNEXT = 16, A_CLIPSAVE = 17, A_CLIPFIELD = 18;
 
     public interface Listener {
         void onKey(String text, int action);
@@ -277,12 +277,14 @@ public class KeyboardView extends View {
         head.add(new Key("PREV", 1f, A_CLIPPREV));
         head.add(new Key((clipPage + 1) + "/" + clipPages(), 0.8f, A_NONE));
         head.add(new Key("NEXT", 1f, A_CLIPNEXT));
-        head.add(new Key("CLEAR", 1.2f, A_CLIPCLR));
+        head.add(new Key("FIELD", 1.1f, A_CLIPFIELD));
+        head.add(new Key("CLEAR", 1.1f, A_CLIPCLR));
         rows.add(head); rowHeights.add(42f);
         for (int i = 0; i < CLIP_PER_PAGE; i++) {
             int gi = clipPage * CLIP_PER_PAGE + i;
             List<Key> row = new ArrayList<>();
-            if (gi < clips.size()) { Key k = new Key(clipPreview(clips.get(gi)), 1f, A_CLIPPICK); k.idx = gi; row.add(k); }
+            if (gi < clips.size()) { Key k = new Key(clipPreview(clips.get(gi)), 3.6f, A_CLIPPICK); k.idx = gi; row.add(k);
+                Key sv = new Key("SAVE", 1f, A_CLIPSAVE); sv.idx = gi; row.add(sv); }
             else if (clips.isEmpty() && i == 0) row.add(new Key("Nothing copied yet", 1f, A_NONE));
             else row.add(new Key("", 1f, A_NONE));
             rows.add(row); rowHeights.add(ROW_DP);
@@ -333,7 +335,7 @@ public class KeyboardView extends View {
                 keyPaint.setColor(idx == pressedIdx ? theme.accent : special ? shade(theme.keyBg) : theme.keyBg);
                 c.drawRoundRect(rect, dp(8), dp(8), keyPaint);
                 boolean bnLabel = looksBengali(k.label);
-                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_NUM || k.action == A_STYLE || k.action == A_CLIP || k.action == A_CLIPCLR || k.action == A_CLIPPREV || k.action == A_CLIPNEXT
+                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_NUM || k.action == A_STYLE || k.action == A_CLIP || k.action == A_CLIPCLR || k.action == A_CLIPPREV || k.action == A_CLIPNEXT || k.action == A_CLIPSAVE || k.action == A_CLIPFIELD
                         || (k.action == A_LANG && !bnLabel)) ? doto : bnLabel ? bengali : Typeface.DEFAULT_BOLD);
                 textPaint.setColor(idx == pressedIdx ? 0xFFFFFFFF : active ? theme.accent : theme.keyText);
                 textPaint.setTextSize(bnLabel ? dp(18) : (k.label.length() >= 3 && k.action != A_SPACE ? dp(13) : dp(17)));
@@ -518,7 +520,7 @@ public class KeyboardView extends View {
                 }
                 if (!longFired && idx >= 0 && idx == pressedIdx && listener != null) {
                     Key k = flatKeys.get(idx);
-                    listener.onKey(k.action == A_CLIPPICK ? String.valueOf(k.idx) : k.label, k.action);
+                    listener.onKey((k.action == A_CLIPPICK || k.action == A_CLIPSAVE) ? String.valueOf(k.idx) : k.label, k.action);
                 }
                 pressedIdx = -1;
                 invalidate();
