@@ -588,7 +588,7 @@ public class MonoKeysTest {
         // clear all empties the list
         tapKey(kb, "?123"); tapKey(kb, "CLIP");
         snap(kb, "kb_clip_pre_clear.png");
-        tapKey(kb, "CLEAR ALL");
+        tapKey(kb, "CLEAR");
         assertEquals(0, ctl.clipCount());
         snap(kb, "kb_clipboard_empty.png");
         // password field: panel does not open, nothing inserted
@@ -607,5 +607,131 @@ public class MonoKeysTest {
         assertEquals("clip", kb.getMode());
         ctl.onStartInput(new android.view.inputmethod.EditorInfo());
         assertNotEquals("clip", kb.getMode());
+    }
+
+    private KeyController clipRig(final KeyboardView kb, final android.view.inputmethod.InputConnection ic) {
+        final java.util.Map<String, String> pm = new java.util.HashMap<>();
+        final KeyController ctl = new KeyController(() -> ic, new KeyController.Strip() {
+            @Override public void show(List<String> items, boolean styles, boolean phonetic) { kb.setCandidates(items, styles); }
+            @Override public void setMode(String m) { kb.setMode(m); }
+            @Override public void setShifted(boolean s) { kb.setShifted(s); }
+            @Override public boolean shifted() { return kb.isShifted(); }
+            @Override public String mode() { return kb.getMode(); }
+            @Override public void setActiveStyle(String s) { kb.setActiveStyle(s); }
+            @Override public void setClips(List<String> c) { kb.setClips(c); }
+        }, new KeyController.Prefs() {
+            @Override public String get(String k, String d) { return pm.containsKey(k) ? pm.get(k) : d; }
+            @Override public void put(String k, String v) { pm.put(k, v); }
+        }, null);
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { ctl.onKey(t, a); }
+            @Override public void onCandidate(int i) { ctl.onCandidate(i); }
+        });
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        return ctl;
+    }
+
+    @Test public void clipboardPagingReachesAll20AndInsertsExactRow() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        KeyController ctl = clipRig(kb, ic);
+        for (int i = 1; i <= 25; i++) ctl.addClip("clip number " + i + (i % 5 == 0 ? " with a much longer line that must be shortened on the key face and still insert whole" : ""));
+        assertEquals(20, ctl.clipCount()); // cap: oldest 5 dropped
+        kb.setMode("en");
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        assertEquals(0, kb.clipPageForTest());
+        snap(kb, "kb_clip_many_p1.png");
+        // newest first: row 1 on page 1 is clip 25
+        tapKey(kb, "clip number 24");
+        assertEquals("clip number 24", edText(ic));
+        // 5th page holds the 17th..20th entries (oldest kept = clip 6)
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        for (int i = 0; i < 4; i++) tapKey(kb, "NEXT");
+        assertEquals(4, kb.clipPageForTest());
+        tapKey(kb, "NEXT"); // already last page: stays
+        assertEquals(4, kb.clipPageForTest());
+        snap(kb, "kb_clip_many_p5.png");
+        tapKey(kb, "clip number 7"); // 20th newest-first is clip 6, 19th is 7
+        assertTrue(edText(ic).endsWith("clip number 7"));
+        // go back via PREV and verify page labels
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        tapKey(kb, "NEXT"); tapKey(kb, "NEXT");
+        assertEquals(2, kb.clipPageForTest());
+        tapKey(kb, "PREV");
+        assertEquals(1, kb.clipPageForTest());
+        snap(kb, "kb_clip_many_p2.png");
+        // a long row inserts the WHOLE text, not the shortened face
+        tapKey(kb, "PREV");
+        assertEquals(0, kb.clipPageForTest());
+        tapKey(kb, keyFace("clip number 25 with a much longer line that must be shortened on the key face and still insert whole"));
+        assertTrue(edText(ic).endsWith("clip number 25 with a much longer line that must be shortened on the key face and still insert whole"));
+        // clear all, then page resets and list is empty
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        tapKey(kb, "CLEAR");
+        assertEquals(0, ctl.clipCount());
+        assertEquals(0, kb.clipPageForTest());
+    }
+
+    private static String keyFace(String t) {
+        String one = t.replaceAll("\\s+", " ").trim();
+        return one.length() > 34 ? one.substring(0, 33) + "\u2026" : one;
+    }
+
+    @Test public void clipboardSensitiveAndCurrentClipAreHandled() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        android.content.ClipboardManager cm = (android.content.ClipboardManager) ctx.getSystemService(Context.CLIPBOARD_SERVICE);
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("t", "plain copied text"));
+        assertEquals("plain copied text", MonoKeysService.acceptableClipText(cm, ctx));
+        android.content.ClipData sens = android.content.ClipData.newPlainText("t", "one-time-code 482913");
+        android.os.PersistableBundle b = new android.os.PersistableBundle();
+        b.putBoolean("android.content.extra.IS_SENSITIVE", true);
+        sens.getDescription().setExtras(b);
+        cm.setPrimaryClip(sens);
+        assertNull("sensitive clips are never kept", MonoKeysService.acceptableClipText(cm, ctx));
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("t", "   "));
+        String blank = MonoKeysService.acceptableClipText(cm, ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(new android.widget.EditText(ctx), true);
+        KeyController ctl = clipRig(kb, ic);
+        if (blank != null) ctl.addClip(blank);
+        assertEquals("blank clip not stored", 0, ctl.clipCount());
+        ctl.addClip(new String(new char[2001]).replace('\0', 'x'));
+        assertEquals("over-long clip not stored", 0, ctl.clipCount());
+    }
+
+    @Test public void banglaSuggestionsFullChainWithKeyTouches() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        KeyController ctl = clipRig(kb, ic);
+        ctl.setBanglaDictionary(WordDictionary.load(new java.io.FileInputStream("src/main/assets/words_bn.txt")));
+        kb.setMode("bn_direct");
+        tapKey(kb, "\u0986"); // may not exist as a key label: fall back to typing via controller if so
+        String typed = edText(ic);
+        if (typed.isEmpty()) ctl.onKey("\u0986", KeyboardView.A_TEXT);
+        tapKey(kb, "\u09AE");
+        snap(kb, "kb_bn_suggest.png");
+        List<String> chips = kb.candidatesForTest();
+        assertTrue(chips.size() >= 2);
+        assertEquals(KeyController.KAR_TOGGLE, chips.get(chips.size() - 1));
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(chips.size() - 1));
+        snap(kb, "kb_bn_suggest_kar.png");
+        assertEquals(10, kb.candidatesForTest().size());
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0)); // consonant + aa-kar
+        snap(kb, "kb_bn_suggest_after_kar.png");
+        String before = edText(ic);
+        assertTrue(before.endsWith("\u09AE\u09BE"));
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0));
+        assertTrue(edText(ic).endsWith(" "));
+        assertTrue(edText(ic).startsWith("\u0986\u09AE\u09BE"));
     }
 }
