@@ -25,17 +25,24 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
             @Override public void onPrimaryClipChanged() { readClip(); }
         };
 
-    /** Copies the current clip into the in-memory list unless Android marks it sensitive. Never persisted. */
-    private void readClip() {
+    /** Text of the current clip if it may be kept: not flagged sensitive, not empty. Null otherwise. */
+    static String acceptableClipText(android.content.ClipboardManager cm, android.content.Context ctx) {
         try {
-            if (cm == null || ctl == null || !cm.hasPrimaryClip()) return;
+            if (cm == null || !cm.hasPrimaryClip()) return null;
             android.content.ClipDescription d = cm.getPrimaryClipDescription();
-            if (d != null && d.getExtras() != null && d.getExtras().getBoolean("android.content.extra.IS_SENSITIVE", false)) return;
+            if (d != null && d.getExtras() != null && d.getExtras().getBoolean("android.content.extra.IS_SENSITIVE", false)) return null;
             android.content.ClipData cd = cm.getPrimaryClip();
-            if (cd == null || cd.getItemCount() == 0) return;
-            CharSequence t = cd.getItemAt(0).coerceToText(this);
-            if (t != null) ctl.addClip(t.toString());
-        } catch (Exception ignored) { }
+            if (cd == null || cd.getItemCount() == 0) return null;
+            CharSequence t = cd.getItemAt(0).coerceToText(ctx);
+            return t == null ? null : t.toString();
+        } catch (Exception e) { return null; }
+    }
+
+    /** Copies the current clip into the in-memory list. Never persisted. */
+    private void readClip() {
+        if (ctl == null) return;
+        String t = acceptableClipText(cm, this);
+        if (t != null) ctl.addClip(t);
     }
 
     @Override public void onDestroy() {
@@ -68,6 +75,9 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
         new Thread(new Runnable() { @Override public void run() {
             try (java.io.InputStream in = getAssets().open("words_en.txt")) {
                 c.setDictionary(WordDictionary.load(in));
+            } catch (Exception ignored) { }
+            try (java.io.InputStream in = getAssets().open("words_bn.txt")) {
+                c.setBanglaDictionary(WordDictionary.load(in));
             } catch (Exception ignored) { }
         } }).start();
         try {
