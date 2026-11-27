@@ -339,7 +339,12 @@ public class MonoKeysTest {
     }
 
     private void tapKey(KeyboardView kb, String label) {
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, 1080, kb.getMeasuredHeight());
+        kb.draw(new Canvas(Bitmap.createBitmap(1080, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888)));
         float[] p = kb.keyCenter(label);
+        assertNotNull("key not on screen: " + label, p);
         ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
         ev(kb, android.view.MotionEvent.ACTION_UP, p);
     }
@@ -501,5 +506,106 @@ public class MonoKeysTest {
         snap(kb, "kb_style_picker_open.png");
         KeyboardView kb2 = styleKb(ctx, 3.0f, 1080, "Normal", new java.util.ArrayList<>());
         snap(kb2, "kb_style_picker_normal.png");
+    }
+
+    @Test public void clipboardWordTypesFromRealKeysWithHasantaAndReph() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        final java.util.Map<String, String> pm = new java.util.HashMap<>();
+        final KeyController ctl = new KeyController(() -> ic, new KeyController.Strip() {
+            @Override public void show(List<String> items, boolean styles, boolean phonetic) { kb.setCandidates(items, styles); }
+            @Override public void setMode(String m) { kb.setMode(m); }
+            @Override public void setShifted(boolean s) { kb.setShifted(s); }
+            @Override public boolean shifted() { return kb.isShifted(); }
+            @Override public String mode() { return kb.getMode(); }
+            @Override public void setActiveStyle(String s) { kb.setActiveStyle(s); }
+        }, new KeyController.Prefs() {
+            @Override public String get(String k, String d) { return pm.containsKey(k) ? pm.get(k) : d; }
+            @Override public void put(String k, String v) { pm.put(k, v); }
+        }, null);
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { ctl.onKey(t, a); }
+            @Override public void onCandidate(int i) { ctl.onCandidate(i); }
+        });
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        kb.setMode("bn_direct");
+        String word = "\u0995\u09CD\u09B2\u09BF\u09AA\u09AC\u09CB\u09B0\u09CD\u09A1"; // clipboard in Bangla
+        String[] seq = {"\u0995", "\u09CD", "\u09B2", "\u09BF", "\u09AA", "\u09AC", "\u09CB", "\u09B0", "\u09CD", "\u09A1"};
+        for (String k : seq) {
+            snap(kb, "kb_tmp.png");
+            assertNotNull("key present on direct layout: " + k, kb.keyCenter(k));
+            tapKey(kb, k);
+        }
+        assertEquals(word, edText(ic));
+    }
+
+    @Test public void clipboardPanelHistoryPickClearAndPasswordLock() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        final android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        final java.util.Map<String, String> pm = new java.util.HashMap<>();
+        final KeyController ctl = new KeyController(() -> ic, new KeyController.Strip() {
+            @Override public void show(List<String> items, boolean styles, boolean phonetic) { kb.setCandidates(items, styles); }
+            @Override public void setMode(String m) { kb.setMode(m); }
+            @Override public void setShifted(boolean s) { kb.setShifted(s); }
+            @Override public boolean shifted() { return kb.isShifted(); }
+            @Override public String mode() { return kb.getMode(); }
+            @Override public void setActiveStyle(String s) { kb.setActiveStyle(s); }
+            @Override public void setClips(List<String> c) { kb.setClips(c); }
+        }, new KeyController.Prefs() {
+            @Override public String get(String k, String d) { return pm.containsKey(k) ? pm.get(k) : d; }
+            @Override public void put(String k, String v) { pm.put(k, v); }
+        }, null);
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { ctl.onKey(t, a); }
+            @Override public void onCandidate(int i) { ctl.onCandidate(i); }
+        });
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        ctl.addClip("first copied line");
+        ctl.addClip("\u0995\u09CD\u09B2\u09BF\u09AA\u09AC\u09CB\u09B0\u09CD\u09A1 \uD83D\uDE00");
+        ctl.addClip("first copied line"); // duplicate moves to front, no second copy
+        assertEquals(2, ctl.clipCount());
+        ctl.addClip("   "); assertEquals(2, ctl.clipCount());
+        kb.setMode("en");
+        snap(kb, "kb_pre_sym.png");
+        tapKey(kb, "?123");
+        snap(kb, "kb_pre_clip.png");
+        tapKey(kb, "CLIP");
+        assertEquals("clip", kb.getMode());
+        snap(kb, "kb_clipboard.png");
+        // pick the Bangla+emoji clip (2nd row of items): inserted whole, no splitting
+        tapKey(kb, "\u0995\u09CD\u09B2\u09BF\u09AA\u09AC\u09CB\u09B0\u09CD\u09A1 \uD83D\uDE00");
+        assertEquals("\u0995\u09CD\u09B2\u09BF\u09AA\u09AC\u09CB\u09B0\u09CD\u09A1 \uD83D\uDE00", edText(ic).length() > 0 ? edText(ic) : "");
+        assertEquals("en", kb.getMode()); // back to the letters
+        // clear all empties the list
+        tapKey(kb, "?123"); tapKey(kb, "CLIP");
+        snap(kb, "kb_clip_pre_clear.png");
+        tapKey(kb, "CLEAR ALL");
+        assertEquals(0, ctl.clipCount());
+        snap(kb, "kb_clipboard_empty.png");
+        // password field: panel does not open, nothing inserted
+        ctl.onKey("", KeyboardView.A_ABC);
+        android.view.inputmethod.EditorInfo pw = new android.view.inputmethod.EditorInfo();
+        pw.inputType = android.text.InputType.TYPE_CLASS_TEXT | android.text.InputType.TYPE_TEXT_VARIATION_PASSWORD;
+        ctl.addClip("hunter2-like");
+        ctl.onStartInput(pw);
+        ctl.onKey("", KeyboardView.A_CLIP);
+        assertNotEquals("clip", kb.getMode());
+        ctl.onKey("0", KeyboardView.A_CLIPPICK);
+        assertFalse(edText(ic).contains("hunter2-like"));
+        // an open panel closes when a new field starts
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        ctl.onKey("", KeyboardView.A_CLIP);
+        assertEquals("clip", kb.getMode());
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        assertNotEquals("clip", kb.getMode());
     }
 }
