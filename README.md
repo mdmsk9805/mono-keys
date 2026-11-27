@@ -48,6 +48,9 @@ double-space to choose `.`, `,` or `।`.
 
 Suggestions show on the strip: completions first, then one-edit spelling fixes. Nothing is ever changed unless you tap a suggestion. They work with the fancy text styles too (the suggested word is re-styled). They are off in password fields and in Bangla. No learning of your own words, no next-word prediction, no Bangla dictionary.
 
+## Clipboard panel
+?123 page, key "CLIP". Shows up to 20 recent copies made while this keyboard was running, newest first; tap one to insert it, "CLEAR ALL" empties the list. The list lives only in memory: it is never written to disk, never leaves the phone, and disappears when Android stops the keyboard process (this can happen at any time). Clips Android marks as sensitive (API 33+) are skipped, texts over 2,000 characters are skipped, and the panel does not open in password fields. It only sees copies made after the keyboard started, plus the current clip when you open the panel.
+
 ## Licenses
 
 Code: MIT (see LICENSE). Bundled fonts Doto and Noto Sans Bengali are
