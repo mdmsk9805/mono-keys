@@ -16,7 +16,7 @@ import java.util.List;
  *  rounded keys, big touch targets, dot-matrix accent font (Doto). */
 public class KeyboardView extends View {
     public static final int A_TEXT = 0, A_BACK = 1, A_ENTER = 2, A_SHIFT = 3,
-        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8;
+        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9;
 
     public interface Listener {
         void onKey(String text, int action);
@@ -24,8 +24,9 @@ public class KeyboardView extends View {
     }
 
     static final class Key {
-        String label; float weight; int action;
+        String label; float weight; int action; String alt;
         Key(String l, float w, int a) { label = l; weight = w; action = a; }
+        Key(String l, String alt, float w, int a) { label = l; this.alt = alt; weight = w; action = a; }
     }
 
     public static final class Theme {
@@ -54,23 +55,27 @@ public class KeyboardView extends View {
         {"q","w","e","r","t","y","u","i","o","p"},
         {"a","s","d","f","g","h","j","k","l"},
         {"z","x","c","v","b","n","m"}};
-    private static final String[][] BN = {
-        {"ক","খ","গ","ঘ","ঙ","চ","ছ","ঝ","ঞ","ট"},
-        {"ঠ","ড","ঢ","ণ","ত","থ","দ","ধ","ন","প"},
-        {"ফ","ব","ভ","ম","য","র","ল","শ","স","হ"}};
-    private static final String[][] BN_SHIFT = {
-        {"অ","আ","ই","ঈ","উ","ঊ","ঋ","এ","ঐ","ও"},
-        {"া","ি","ী","ু","ূ","ৃ","ে","ৈ","ো","ৌ"},
-        {"ষ","ং","ঃ","ঁ","ৎ","ড়","ঢ়","য়","।"}};
+    // Direct Bangla layer: Probhat-style positions read from the user's own
+    // reference screenshots (QWERTY slots). Base layer, then the shift layer
+    // (shown as small corner labels on each key).
+    static final String[][] BN = {
+        {"দ","ূ","ী","র","ট","এ","ু","ি","ও","প","ে","ো"},
+        {"া","স","ড","ত","গ","হ","জ","ক","ল"},
+        {"য়","শ","চ","আ","ব","ন","ম","্","়"}};
+    static final String[][] BN_SHIFT = {
+        {"ধ","ঊ","ঈ","ড়","ঠ","ঐ","উ","ই","ঔ","ফ","ৈ","ৌ"},
+        {"অ","ষ","ঢ","থ","ঘ","ঃ","ঝ","খ","ং"},
+        {"য","ঢ়","ছ","ঋ","ভ","ণ","ঙ","ঁ","ৎ"}};
+    private static final String[] DIG_EN = {"1","2","3","4","5","6","7","8","9","0"};
+    private static final String[] DIG_BN = {"১","২","৩","৪","৫","৬","৭","৮","৯","০"};
     private static final String[][] SYM = {
-        {"1","2","3","4","5","6","7","8","9","0"},
-        {"@","#","$","%","&","-","+","(",")"},
-        {"=","*","?","!","\"","'",":",";"}};
-    private static final String[][] SYM_BN = {
-        {"১","২","৩","৪","৫","৬","৭","৮","৯","০"},
-        {"@","#","$","%","&","-","+","(",")"},
-        {"=","*","?","!","\"","'",":",";"}};
+        {"~","±","×","÷","•","°","`","_","{","}"},
+        {"@","#","₹","%","&","*","-","=","(",")"},
+        {"!","\"","'",":",";","+","/","?","[","]"}};
+    private static final String[][] NUM = {
+        {"1","2","3"},{"4","5","6"},{"7","8","9"}};
 
+    static final float ROW_DP = 52f, NUMROW_DP = 42f;
     static Typeface overrideDoto, overrideBengali; // test hook
 
     private final Paint keyPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
@@ -81,7 +86,7 @@ public class KeyboardView extends View {
 
     private Theme theme = themeFor("mono", 0);
     private Listener listener;
-    private String mode = "en"; // en | bn_direct | sym
+    private String mode = "en"; // en | bn_direct | bn_phon | sym | num
     private boolean shifted = false;
     private boolean symFromBangla = false;
     private String activeStyle = "Normal";
@@ -109,7 +114,7 @@ public class KeyboardView extends View {
     public void setActiveStyle(String s) { activeStyle = s; }
 
     public void setMode(String m) {
-        if (mode.equals("bn_direct")) symFromBangla = true;
+        if (mode.equals("bn_direct") || mode.equals("bn_phon")) symFromBangla = true;
         else if (mode.equals("en")) symFromBangla = false;
         mode = m; shifted = false; invalidate();
     }
@@ -132,48 +137,92 @@ public class KeyboardView extends View {
     private float dp(float v) { return v * density; }
 
     @Override protected void onMeasure(int w, int h) {
-        setMeasuredDimension(MeasureSpec.getSize(w), (int) (dp(44) + 4 * dp(58) + dp(8)));
+        setMeasuredDimension(MeasureSpec.getSize(w), (int) (dp(44) + dp(NUMROW_DP) + 4 * dp(ROW_DP) + dp(8)));
     }
 
+    private final List<Float> rowHeights = new ArrayList<>();
+
     private void buildRows() {
-        rows.clear();
-        String[][] base;
-        boolean bangla = mode.equals("bn_direct");
-        if (mode.equals("sym")) base = symFromBangla ? SYM_BN : SYM;
-        else if (bangla) base = shifted ? BN_SHIFT : BN;
-        else base = EN;
-        for (int r = 0; r < 3; r++) {
-            List<Key> row = new ArrayList<>();
-            if (r == 2) row.add(new Key(shifted ? "⇩" : "⇧", 1.5f, A_SHIFT));
-            for (String k : base[r]) {
-                String label = (!bangla && mode.equals("en") && shifted) ? k.toUpperCase() : k;
-                row.add(new Key(label, 1f, A_TEXT));
+        rows.clear(); rowHeights.clear();
+        boolean bnDirect = mode.equals("bn_direct");
+        boolean bnAny = bnDirect || mode.equals("bn_phon");
+        if (mode.equals("num")) { buildNumPad(); return; }
+        // permanent number row
+        List<Key> nr = new ArrayList<>();
+        String[] dig = (bnAny || (mode.equals("sym") && symFromBangla)) ? DIG_BN : DIG_EN;
+        for (String d : dig) nr.add(new Key(d, 1f, A_TEXT));
+        rows.add(nr); rowHeights.add(NUMROW_DP);
+        if (mode.equals("sym")) {
+            for (int r = 0; r < 3; r++) {
+                List<Key> row = new ArrayList<>();
+                for (String k : SYM[r]) row.add(new Key(k, 1f, A_TEXT));
+                if (r == 2) row.add(new Key("⌫", 1.4f, A_BACK));
+                rows.add(row); rowHeights.add(ROW_DP);
             }
-            if (r == 0 && mode.equals("sym")) row.add(new Key("⌫", 1.4f, A_BACK));
-            if (r == 1 && !mode.equals("sym")) row.add(new Key("⌫", 1.4f, A_BACK));
-            if (r == 1 && mode.equals("sym")) row.add(new Key("⌫", 1.4f, A_BACK));
-            if (r == 2) row.add(new Key("⏎", 1.5f, A_ENTER));
-            rows.add(row);
+        } else if (bnDirect) {
+            String[][] alt = BN_SHIFT;
+            for (int r = 0; r < 3; r++) {
+                List<Key> row = new ArrayList<>();
+                if (r == 2) row.add(new Key(shifted ? "⇩" : "⇧", 1.2f, A_SHIFT));
+                for (int i = 0; i < BN[r].length; i++) {
+                    String main = shifted ? alt[r][i] : BN[r][i];
+                    String small = shifted ? BN[r][i] : alt[r][i];
+                    row.add(new Key(main, small, 1f, A_TEXT));
+                }
+                if (r == 2) row.add(new Key("⌫", 1.2f, A_BACK));
+                rows.add(row); rowHeights.add(ROW_DP);
+            }
+        } else {
+            for (int r = 0; r < 3; r++) {
+                List<Key> row = new ArrayList<>();
+                if (r == 2) row.add(new Key(shifted ? "⇩" : "⇧", 1.4f, A_SHIFT));
+                for (String k : EN[r]) row.add(new Key(shifted ? k.toUpperCase() : k, 1f, A_TEXT));
+                if (r == 2) row.add(new Key("⌫", 1.4f, A_BACK));
+                rows.add(row); rowHeights.add(ROW_DP);
+            }
         }
         List<Key> bottom = new ArrayList<>();
-        if (mode.equals("en")) bottom.add(new Key("Aa", 1.2f, A_STYLE));
-        bottom.add(new Key(mode.equals("sym") ? "ABC" : "123", 1.2f, mode.equals("sym") ? A_ABC : A_SYM));
-        bottom.add(new Key(bangla ? "EN" : "বাং", 1.4f, A_LANG));
-        bottom.add(new Key(bangla ? "্" : ",", 1f, A_TEXT));
-        bottom.add(new Key("space", mode.equals("en") ? 4.6f : 4.0f, A_SPACE));
-        bottom.add(new Key(".", 1f, A_TEXT));
-        rows.add(bottom);
+        boolean sym = mode.equals("sym");
+        bottom.add(new Key(sym ? "ABC" : "?123", 1.3f, sym ? A_ABC : A_SYM));
+        if (sym) bottom.add(new Key("1234", 1.3f, A_NUM));
+        else if (mode.equals("en")) bottom.add(new Key("Aa", 1.2f, A_STYLE));
+        if (!sym) bottom.add(new Key(bnAny ? "EN" : "অ", 1.2f, A_LANG));
+        bottom.add(new Key(bnDirect ? "," : ",", 1f, A_TEXT));
+        bottom.add(new Key("space", 4.0f, A_SPACE));
+        bottom.add(new Key(bnAny ? "।" : ".", 1f, A_TEXT));
+        if (bnAny) bottom.add(new Key(".", 1f, A_TEXT));
+        bottom.add(new Key("⏎", 1.4f, A_ENTER));
+        rows.add(bottom); rowHeights.add(ROW_DP);
+    }
+
+    private void buildNumPad() {
+        for (int r = 0; r < 3; r++) {
+            List<Key> row = new ArrayList<>();
+            for (String k : NUM[r]) row.add(new Key(k, 1f, A_TEXT));
+            if (r == 0) row.add(new Key("⌫", 1f, A_BACK));
+            if (r == 1) row.add(new Key(".", 1f, A_TEXT));
+            if (r == 2) row.add(new Key(",", 1f, A_TEXT));
+            rows.add(row); rowHeights.add(62.5f);
+        }
+        List<Key> b = new ArrayList<>();
+        b.add(new Key("ABC", 1f, A_ABC));
+        b.add(new Key("0", 1f, A_TEXT));
+        b.add(new Key("space", 1f, A_SPACE));
+        b.add(new Key("⏎", 1f, A_ENTER));
+        rows.add(b); rowHeights.add(62.5f);
     }
 
     @Override protected void onDraw(Canvas c) {
         buildRows();
         c.drawColor(theme.bg);
-        float w = getWidth(), stripH = dp(44), gap = dp(4), pad = dp(6), rowH = dp(58);
+        float w = getWidth(), stripH = dp(44), gap = dp(3), pad = dp(4);
         drawStrip(c, w, stripH, gap);
 
         keyRects.clear(); flatKeys.clear();
         float y = stripH + dp(2);
-        for (List<Key> row : rows) {
+        for (int ri = 0; ri < rows.size(); ri++) {
+            List<Key> row = rows.get(ri);
+            float rowH = dp(rowHeights.get(ri));
             float totalW = 0;
             for (Key k : row) totalW += k.weight;
             float unit = (w - pad * 2 - gap * (row.size() - 1)) / totalW;
@@ -190,11 +239,17 @@ public class KeyboardView extends View {
                 keyPaint.setColor(idx == pressedIdx ? theme.accent : special ? shade(theme.keyBg) : theme.keyBg);
                 c.drawRoundRect(rect, dp(8), dp(8), keyPaint);
                 boolean bnLabel = looksBengali(k.label);
-                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_STYLE
+                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_NUM || k.action == A_STYLE
                         || (k.action == A_LANG && !bnLabel)) ? doto : bnLabel ? bengali : Typeface.DEFAULT_BOLD);
                 textPaint.setColor(idx == pressedIdx ? 0xFFFFFFFF : active ? theme.accent : theme.keyText);
-                textPaint.setTextSize(bnLabel ? dp(19) : dp(17));
+                textPaint.setTextSize(bnLabel ? dp(18) : (k.label.length() >= 3 && k.action != A_SPACE ? dp(13) : dp(17)));
                 c.drawText(k.label, rect.centerX(), rect.centerY() + dp(6), textPaint);
+                if (k.alt != null) {
+                    textPaint.setTextSize(dp(9));
+                    textPaint.setTypeface(bengali);
+                    textPaint.setColor(idx == pressedIdx ? 0xFFFFFFFF : theme.stripText);
+                    c.drawText(k.alt, rect.right - dp(8), rect.top + dp(11), textPaint);
+                }
                 x += kw + gap;
             }
             y += rowH;
@@ -207,7 +262,7 @@ public class KeyboardView extends View {
         if (candidates.isEmpty()) {
             textPaint.setTypeface(doto);
             textPaint.setColor(theme.stripText);
-            String hint = mode.equals("bn_direct") ? "বাংলা" : mode.equals("sym") ? "123"
+            String hint = (mode.equals("bn_direct") || mode.equals("bn_phon")) ? "বাংলা" : mode.equals("sym") ? "123"
                     : activeStyle.equals("Normal") ? "MONO KEYS" : activeStyle.toUpperCase();
             c.drawText(hint, w / 2, stripH / 2 + dp(6), textPaint);
             return;
@@ -217,8 +272,14 @@ public class KeyboardView extends View {
         float total = gap * (n - 1);
         for (int i = 0; i < n; i++) {
             textPaint.setTypeface(stripIsStyles ? doto : looksBengali(candidates.get(i)) ? bengali : Typeface.DEFAULT_BOLD);
-            ws[i] = Math.min(textPaint.measureText(candidates.get(i)) + dp(28), w * 0.6f);
+            ws[i] = Math.min(textPaint.measureText(candidates.get(i)) + dp(candidates.size() > 6 ? 12 : 28), w * 0.6f);
             total += ws[i];
+        }
+        float avail = w - dp(12);
+        if (total > avail) {
+            float f = (avail - gap * (n - 1)) / (total - gap * (n - 1));
+            for (int i = 0; i < n; i++) ws[i] *= f;
+            total = avail;
         }
         float x = Math.max((w - total) / 2, dp(6));
         for (int i = 0; i < n; i++) {
