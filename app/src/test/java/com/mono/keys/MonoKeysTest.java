@@ -728,6 +728,9 @@ public class MonoKeysTest {
         assertEquals(10, kb.candidatesForTest().size());
         ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0)); // consonant + aa-kar
         snap(kb, "kb_bn_suggest_after_kar.png");
+        List<String> afterKar = kb.candidatesForTest();
+        assertEquals("kar toggle remains after a kar", KeyController.KAR_TOGGLE, afterKar.get(afterKar.size() - 1));
+        assertTrue("max 3 suggestions + toggle: " + afterKar, afterKar.size() <= 4);
         String before = edText(ic);
         assertTrue(before.endsWith("\u09AE\u09BE"));
         ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(0));
