@@ -82,6 +82,16 @@ public class SettingsActivity extends Activity {
         root.addView(txt("\nACCENT", 13, 0xFFD71920));
         root.addView(accents());
 
+        root.addView(txt("\nVOICE CHECK (no microphone used)", 13, 0xFFD71920));
+        final TextView vout = txt("Shows which speech services this phone has. Voice typing itself is not built.", 12, 0xFF888888);
+        Button vb = btn("Run voice check");
+        vb.setOnClickListener(v -> {
+            vout.setText(VoiceCheck.report(this));
+            VoiceCheck.checkBangla(this, r -> runOnUiThread(() -> vout.setText(vout.getText() + "\n" + r)));
+        });
+        root.addView(vb);
+        root.addView(vout);
+
         root.addView(txt("\nSAVED TEXT SHORTCUTS", 13, 0xFFD71920));
         root.addView(txt("Type a trigger on the keyboard, tap the suggestion to insert the full text. "
                 + "Values are AES-encrypted on this device only (key in Android Keystore); "
