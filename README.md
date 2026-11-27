@@ -32,6 +32,13 @@ dot-matrix (Doto) accents.
 
 Standard Gradle build (`./gradlew assembleRelease`). Min SDK 26, target 34.
 
+## Direct Bangla layout
+Letter positions follow a Probhat-style QWERTY arrangement (base layer, with the
+shift layer shown as small corner labels). It is a layout read from a reference
+screenshot, not a certified standard. Extras: contextual kar options after a
+consonant, a permanent number row, a numbers-only pad (via ?123 then 1234), and
+double-space to choose `.`, `,` or `।`.
+
 ## Licenses
 
 Code: MIT (see LICENSE). Bundled fonts Doto and Noto Sans Bengali are
