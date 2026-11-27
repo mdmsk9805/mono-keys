@@ -1,0 +1,10 @@
+Word frequency data in app/src/main/assets/words_en.txt is derived from
+hermitdave/FrequencyWords (https://github.com/hermitdave/FrequencyWords),
+en_50k.txt (2018), which is based on the OpenSubtitles corpus.
+Author: Hermit Dave. The repository states: MIT License for code,
+CC-by-sa-4.0 for content.
+Content licence: Creative Commons Attribution-ShareAlike 4.0 International
+https://creativecommons.org/licenses/by-sa/4.0/legalcode
+Changes made: filtered to words also present in dwyl/english-words
+words_alpha.txt (public domain), truncated to the first 30,000 entries,
+frequency counts removed (order kept).
