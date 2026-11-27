@@ -24,7 +24,7 @@ public class KeyboardView extends View {
     }
 
     static final class Key {
-        String label; float weight; int action; String alt;
+        String label; float weight; int action; String alt; String longText;
         Key(String l, float w, int a) { label = l; weight = w; action = a; }
         Key(String l, String alt, float w, int a) { label = l; this.alt = alt; weight = w; action = a; }
     }
@@ -61,11 +61,11 @@ public class KeyboardView extends View {
     static final String[][] BN = {
         {"দ","ূ","ী","র","ট","এ","ু","ি","ও","প","ে","ো"},
         {"া","স","ড","ত","গ","হ","জ","ক","ল"},
-        {"য়","শ","চ","আ","ব","ন","ম","্","়"}};
+        {"য়","শ","চ","আ","ব","ন","ম","ৃ","্"}};
     static final String[][] BN_SHIFT = {
         {"ধ","ঊ","ঈ","ড়","ঠ","ঐ","উ","ই","ঔ","ফ","ৈ","ৌ"},
         {"অ","ষ","ঢ","থ","ঘ","ঃ","ঝ","খ","ং"},
-        {"য","ঢ়","ছ","ঋ","ভ","ণ","ঙ","ঁ","ৎ"}};
+        {"য","ঢ়","ছ","ঋ","ভ","ণ","ঙ","ৃ","ঁ"}};
     private static final String[] DIG_EN = {"1","2","3","4","5","6","7","8","9","0"};
     private static final String[] DIG_BN = {"১","২","৩","৪","৫","৬","৭","৮","৯","০"};
     private static final String[][] SYM = {
@@ -98,6 +98,23 @@ public class KeyboardView extends View {
     private final List<Key> flatKeys = new ArrayList<>();
     private final List<RectF> stripRects = new ArrayList<>();
     private int pressedIdx = -1;
+    private boolean longFired = false;
+    private final android.os.Handler lpHandler = new android.os.Handler(android.os.Looper.getMainLooper());
+    private final Runnable longPress = new Runnable() {
+        @Override public void run() {
+            if (pressedIdx >= 0 && pressedIdx < flatKeys.size()) {
+                Key k = flatKeys.get(pressedIdx);
+                if (k.longText != null && listener != null) { longFired = true; listener.onKey(k.longText, A_TEXT); }
+            }
+        }
+    };
+
+    /** Test hook: centre of the first key with this label from the last draw. */
+    float[] keyCenter(String label) {
+        for (int i = 0; i < flatKeys.size(); i++)
+            if (flatKeys.get(i).label.equals(label)) return new float[]{keyRects.get(i).centerX(), keyRects.get(i).centerY()};
+        return null;
+    }
 
     public KeyboardView(Context ctx, AttributeSet a) {
         super(ctx, a);
@@ -167,7 +184,10 @@ public class KeyboardView extends View {
                 for (int i = 0; i < BN[r].length; i++) {
                     String main = shifted ? alt[r][i] : BN[r][i];
                     String small = shifted ? BN[r][i] : alt[r][i];
-                    row.add(new Key(main, small, 1f, A_TEXT));
+                    Key bk = new Key(main, small, 1f, A_TEXT);
+                    if (main.equals("য়") || main.equals("য")) bk.longText = "্য";
+                    if (shifted && main.equals("উ")) bk.longText = "ৎ";
+                    row.add(bk);
                 }
                 if (r == 2) row.add(new Key("⌫", 1.2f, A_BACK));
                 rows.add(row); rowHeights.add(ROW_DP);
@@ -314,7 +334,11 @@ public class KeyboardView extends View {
         float x = e.getX(), y = e.getY();
         switch (e.getActionMasked()) {
             case MotionEvent.ACTION_DOWN:
+                longFired = false;
                 pressedIdx = findKey(x, y);
+                lpHandler.removeCallbacks(longPress);
+                if (pressedIdx >= 0 && flatKeys.get(pressedIdx).longText != null)
+                    lpHandler.postDelayed(longPress, 400);
                 if (pressedIdx < 0) {
                     int ci = findStrip(x, y);
                     if (ci >= 0 && listener != null) listener.onCandidate(ci);
@@ -322,12 +346,13 @@ public class KeyboardView extends View {
                 invalidate();
                 return true;
             case MotionEvent.ACTION_MOVE:
-                pressedIdx = findKey(x, y);
+                { int ni = findKey(x, y); if (ni != pressedIdx) lpHandler.removeCallbacks(longPress); pressedIdx = ni; }
                 invalidate();
                 return true;
             case MotionEvent.ACTION_UP:
+                lpHandler.removeCallbacks(longPress);
                 int idx = findKey(x, y);
-                if (idx >= 0 && idx == pressedIdx && listener != null) {
+                if (!longFired && idx >= 0 && idx == pressedIdx && listener != null) {
                     Key k = flatKeys.get(idx);
                     listener.onKey(k.label, k.action);
                 }
