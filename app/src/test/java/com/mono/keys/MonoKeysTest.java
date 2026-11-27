@@ -322,4 +322,109 @@ public class MonoKeysTest {
         }
         assertTrue(checked > 25);
     }
+
+    // ---- full chain: touch -> KeyboardView -> KeyController -> real EditText InputConnection ----
+    private void snap(KeyboardView kb, String name) throws Exception {
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, 1080, kb.getMeasuredHeight());
+        Bitmap bmp = Bitmap.createBitmap(1080, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        kb.draw(new Canvas(bmp));
+        File out = new File("build/test-renders/" + name);
+        out.getParentFile().mkdirs();
+        FileOutputStream fos = new FileOutputStream(out);
+        bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
+        fos.close();
+    }
+
+    private void tapKey(KeyboardView kb, String label) {
+        float[] p = kb.keyCenter(label);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        ev(kb, android.view.MotionEvent.ACTION_UP, p);
+    }
+
+    private String edText(android.view.inputmethod.InputConnection ic) {
+        CharSequence cs = ic.getTextBeforeCursor(1000, 0);
+        return cs == null ? "" : cs.toString();
+    }
+
+    @Test public void fullChainSuggestionsHoldAndModes() throws Exception {
+        final Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        ctx.getResources().getDisplayMetrics().densityDpi = 480;
+        loadRealFonts(ctx);
+        final KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        android.widget.EditText et = new android.widget.EditText(ctx);
+        final android.view.inputmethod.InputConnection ic = new android.view.inputmethod.BaseInputConnection(et, true);
+        final java.util.Map<String, String> pm = new java.util.HashMap<>();
+        KeyController ctl = new KeyController(() -> ic, new KeyController.Strip() {
+            @Override public void show(List<String> items, boolean styles, boolean phonetic) { kb.setCandidates(items, styles); }
+            @Override public void setMode(String m) { kb.setMode(m); }
+            @Override public void setShifted(boolean s) { kb.setShifted(s); }
+            @Override public boolean shifted() { return kb.isShifted(); }
+            @Override public String mode() { return kb.getMode(); }
+            @Override public void setActiveStyle(String s) { kb.setActiveStyle(s); }
+        }, new KeyController.Prefs() {
+            @Override public String get(String k, String d) { return pm.containsKey(k) ? pm.get(k) : d; }
+            @Override public void put(String k, String v) { pm.put(k, v); }
+        }, null);
+        ctl.setDictionary(WordDictionary.load(new java.io.FileInputStream("src/main/assets/words_en.txt")));
+        final KeyController c2 = ctl;
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { c2.onKey(t, a); }
+            @Override public void onCandidate(int i) { c2.onCandidate(i); }
+        });
+        ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        kb.setMode("en");
+        snap(kb, "kb_en.png");
+        // type "tomor" with real key touches, then tap the suggestion chip with a real touch
+        for (char ch : "tomor".toCharArray()) tapKey(kb, String.valueOf(ch));
+        assertEquals("tomor", edText(ic));
+        snap(kb, "kb_en_suggest.png");
+        float[] chip = null; int ci = kb.candidatesForTest().indexOf("tomorrow");
+        assertTrue(ci >= 0);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(ci));
+        assertEquals("tomorrow ", edText(ic));
+        // typo: offered, original text untouched until tapped
+        for (char ch : "becuase".toCharArray()) tapKey(kb, String.valueOf(ch));
+        assertEquals("tomorrow becuase", edText(ic));
+        snap(kb, "kb_en_correct.png");
+        ci = kb.candidatesForTest().indexOf("because");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(ci));
+        assertEquals("tomorrow because ", edText(ic));
+        // Bangla direct: hold a key into the real editor, with the preview bubble drawn while held
+        ctl.onKey("", KeyboardView.A_LANG);
+        assertEquals("bn_direct", kb.getMode());
+        String base = KeyboardView.BN[1][3], corner = KeyboardView.BN_SHIFT[1][3];
+        snap(kb, "kb_bn_pre.png");
+        float[] p = kb.keyCenter(base);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        snap(kb, "kb_bn_hold.png");
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(600, java.util.concurrent.TimeUnit.MILLISECONDS);
+        ev(kb, android.view.MotionEvent.ACTION_UP, p);
+        assertTrue(edText(ic).endsWith(corner));
+        assertEquals(("tomorrow because " + corner).length(), edText(ic).length()); // hold typed once, no extra tap
+        // phonetic mode label + fancy style suggestion
+        kb.setCandidates(new java.util.ArrayList<String>(), false);
+        kb.setMode("bn_phon");
+        snap(kb, "kb_mode_phonetic.png");
+        kb.setMode("bn_direct");
+        snap(kb, "kb_mode_direct.png");
+        ctl.onKey("", KeyboardView.A_LANG); // back to English
+        ic.deleteSurroundingText(1000, 0); ctl.onStartInput(new android.view.inputmethod.EditorInfo());
+        kb.setMode("en");
+        snap(kb, "kb_en_pre.png");
+        ctl.onKey("Aa", KeyboardView.A_STYLE); ctl.onCandidate(1); // Bold
+        snap(kb, "kb_en_pre2.png");
+        assertEquals("Bold", pm.get("style"));
+        for (char ch : "tomor".toCharArray()) tapKey(kb, String.valueOf(ch));
+        snap(kb, "kb_en_suggest_bold.png");
+        ci = kb.candidatesForTest().indexOf("tomorrow");
+        assertTrue(ci >= 0);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, kb.stripCenter(ci));
+        assertEquals(UnicodeStyles.map('t', "Bold") + UnicodeStyles.map('o', "Bold"), edText(ic).substring(0, 4));
+        assertTrue(edText(ic).endsWith(" "));
+        assertEquals(17, edText(ic).length());
+    }
 }
