@@ -18,6 +18,7 @@ public class KeyController {
         boolean shifted();
         String mode();
         void setActiveStyle(String s);
+        default void setClips(List<String> c) { }
     }
     public interface Prefs {
         String get(String k, String def);
@@ -84,8 +85,22 @@ public class KeyController {
         return false;
     }
 
+    // ---- clipboard history: memory only, never written to disk ----
+    private final List<String> clips = new ArrayList<>();
+    static final int MAX_CLIPS = 20, MAX_CLIP_CHARS = 2000;
+    public void addClip(String t) {
+        if (t == null || t.trim().isEmpty() || t.length() > MAX_CLIP_CHARS) return;
+        clips.remove(t);
+        clips.add(0, t);
+        while (clips.size() > MAX_CLIPS) clips.remove(clips.size() - 1);
+        if (strip.mode().equals("clip")) strip.setClips(new ArrayList<>(clips));
+    }
+    public void clearClips() { clips.clear(); strip.setClips(new ArrayList<String>()); }
+    int clipCount() { return clips.size(); }
+
     public void onStartInput(EditorInfo info) {
         sensitive = isSensitive(info);
+        if (strip.mode().equals("clip")) setAlpha(lastAlpha);
         String m = strip.mode();
         if (m.equals("bn_phon") && !bnMode.equals("phonetic")) strip.setMode("bn_direct");
         else if (m.equals("bn_direct") && bnMode.equals("phonetic")) strip.setMode("bn_phon");
@@ -121,6 +136,26 @@ public class KeyController {
                 ic.finishComposingText();
                 lastTyped = 0;
                 setAlpha("bn");
+                return;
+            case KeyboardView.A_CLIP:
+                if (!sensitive) { strip.setClips(new ArrayList<>(clips)); strip.setMode("clip"); updateCandidates(); }
+                return;
+            case KeyboardView.A_CLIPCLR:
+                clearClips();
+                return;
+            case KeyboardView.A_CLIPPICK: {
+                int i;
+                try { i = Integer.parseInt(text); } catch (NumberFormatException e) { return; }
+                if (!sensitive && i >= 0 && i < clips.size()) {
+                    flush(ic);
+                    ic.commitText(clips.get(i), 1);
+                    resetWord();
+                    lastTyped = 0;
+                    setAlpha(lastAlpha);
+                }
+                return;
+            }
+            case KeyboardView.A_NONE:
                 return;
             case KeyboardView.A_NUM:
                 strip.setMode("num");
