@@ -19,6 +19,30 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
         prefs = getSharedPreferences("mono_keys", MODE_PRIVATE);
     }
 
+    private android.content.ClipboardManager cm;
+    private final android.content.ClipboardManager.OnPrimaryClipChangedListener clipListener =
+        new android.content.ClipboardManager.OnPrimaryClipChangedListener() {
+            @Override public void onPrimaryClipChanged() { readClip(); }
+        };
+
+    /** Copies the current clip into the in-memory list unless Android marks it sensitive. Never persisted. */
+    private void readClip() {
+        try {
+            if (cm == null || ctl == null || !cm.hasPrimaryClip()) return;
+            android.content.ClipDescription d = cm.getPrimaryClipDescription();
+            if (d != null && d.getExtras() != null && d.getExtras().getBoolean("android.content.extra.IS_SENSITIVE", false)) return;
+            android.content.ClipData cd = cm.getPrimaryClip();
+            if (cd == null || cd.getItemCount() == 0) return;
+            CharSequence t = cd.getItemAt(0).coerceToText(this);
+            if (t != null) ctl.addClip(t.toString());
+        } catch (Exception ignored) { }
+    }
+
+    @Override public void onDestroy() {
+        try { if (cm != null) cm.removePrimaryClipChangedListener(clipListener); } catch (Exception ignored) { }
+        super.onDestroy();
+    }
+
     @Override public View onCreateInputView() {
         kb = new KeyboardView(this, null);
         kb.setListener(this);
@@ -35,6 +59,7 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
                 @Override public boolean shifted() { return kb.isShifted(); }
                 @Override public String mode() { return kb.getMode(); }
                 @Override public void setActiveStyle(String s) { kb.setActiveStyle(s); }
+                @Override public void setClips(List<String> c) { kb.setClips(c); }
             }, new KeyController.Prefs() {
                 @Override public String get(String k, String def) { return prefs.getString(k, def); }
                 @Override public void put(String k, String v) { prefs.edit().putString(k, v).apply(); }
@@ -45,6 +70,10 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
                 c.setDictionary(WordDictionary.load(in));
             } catch (Exception ignored) { }
         } }).start();
+        try {
+            cm = (android.content.ClipboardManager) getSystemService(CLIPBOARD_SERVICE);
+            cm.addPrimaryClipChangedListener(clipListener);
+        } catch (Exception ignored) { }
         applyTheme();
         return kb;
     }
@@ -75,6 +104,9 @@ public class MonoKeysService extends InputMethodService implements KeyboardView.
         super.onFinishInputView(finishingInput);
     }
 
-    @Override public void onKey(String text, int action) { if (ctl != null) ctl.onKey(text, action); }
+    @Override public void onKey(String text, int action) {
+        if (action == KeyboardView.A_CLIP) readClip();
+        if (ctl != null) ctl.onKey(text, action);
+    }
     @Override public void onCandidate(int index) { if (ctl != null) ctl.onCandidate(index); }
 }
