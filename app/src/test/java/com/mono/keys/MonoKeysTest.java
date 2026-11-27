@@ -106,6 +106,7 @@ public class MonoKeysTest {
         render(ctx, "en", false, false, java.util.Arrays.asList("iq: IQAMA 2222 3333 4…", "em: me@example.com"), "kb_shortcut.png");
         render(ctx, "en", false, true, null, "kb_styles.png");
         render(ctx, "sym", false, false, null, "kb_sym.png");
+        render(ctx, "bn_phon", false, false, null, "kb_bn_phon.png");
         render(ctx, "num", false, false, null, "kb_num.png");
         List<String> kar = new java.util.ArrayList<>();
         for (String k : KeyController.KAR) kar.add("ম" + k);
@@ -225,5 +226,100 @@ public class MonoKeysTest {
         kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0, android.view.MotionEvent.ACTION_DOWN, p[0], p[1], 0));
         kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0 + 50, android.view.MotionEvent.ACTION_UP, p[0], p[1], 0));
         assertEquals(java.util.Arrays.asList("য়"), got); // short tap still types the key
+    }
+
+    private KeyboardView backKb(Context ctx, List<String> got) {
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setMode("en");
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { if (a == KeyboardView.A_BACK) got.add("B"); }
+            @Override public void onCandidate(int i) {}
+        });
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, 1080, kb.getMeasuredHeight());
+        kb.draw(new Canvas(Bitmap.createBitmap(1080, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888)));
+        return kb;
+    }
+
+    private void ev(KeyboardView kb, int action, float[] p) {
+        long t = android.os.SystemClock.uptimeMillis();
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t, t, action, p[0], p[1], 0));
+    }
+
+    @Test public void holdingBackspaceRepeatsAndTapDeletesOnce() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        List<String> got = new java.util.ArrayList<>();
+        KeyboardView kb = backKb(ctx, got);
+        float[] p = kb.keyCenter("⌫");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        ev(kb, android.view.MotionEvent.ACTION_UP, p);
+        assertEquals(1, got.size()); // plain tap = exactly one delete
+        got.clear();
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertTrue("repeats while held: " + got.size(), got.size() > 5);
+        ev(kb, android.view.MotionEvent.ACTION_UP, p);
+        int n = got.size();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(1000, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertEquals("stops on release, no extra delete", n, got.size());
+    }
+
+    @Test public void backspaceRepeatStopsOnCancelAndDetach() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        List<String> got = new java.util.ArrayList<>();
+        KeyboardView kb = backKb(ctx, got);
+        float[] p = kb.keyCenter("⌫");
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+        ev(kb, android.view.MotionEvent.ACTION_CANCEL, p);
+        int n = got.size();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertEquals(n, got.size());
+        got.clear();
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+        kb.stopRepeat(); // what detach / hide / new input calls
+        n = got.size();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertEquals(n, got.size());
+        // finger slides off the key: repeat stops
+        got.clear();
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        long t = android.os.SystemClock.uptimeMillis();
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_MOVE, 5, 5, 0));
+        n = got.size();
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(700, java.util.concurrent.TimeUnit.MILLISECONDS);
+        assertEquals(n, got.size());
+    }
+
+    @Test public void holdOnBanglaKeysGivesCornerCharacter() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setMode("bn_direct");
+        final List<String> got = new java.util.ArrayList<>();
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { got.add(t); }
+            @Override public void onCandidate(int i) {}
+        });
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(1080, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, 1080, kb.getMeasuredHeight());
+        kb.draw(new Canvas(Bitmap.createBitmap(1080, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888)));
+        int checked = 0;
+        for (int r = 0; r < KeyboardView.BN.length; r++) for (int i = 0; i < KeyboardView.BN[r].length; i++) {
+            String base = KeyboardView.BN[r][i], corner = KeyboardView.BN_SHIFT[r][i];
+            if (base.equals("য়") || base.equals("য")) continue; // these keys keep their special hold
+            float[] p = kb.keyCenter(base);
+            got.clear();
+            ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+            org.robolectric.shadows.ShadowLooper.idleMainLooper(600, java.util.concurrent.TimeUnit.MILLISECONDS);
+            ev(kb, android.view.MotionEvent.ACTION_UP, p);
+            assertEquals("hold " + base, java.util.Arrays.asList(corner), got);
+            checked++;
+        }
+        assertTrue(checked > 25);
     }
 }
