@@ -2,7 +2,7 @@ plugins { id 'com.android.application' }
 android {
     namespace 'com.mono.keys'
     compileSdk 34
-    defaultConfig { applicationId 'com.mono.keys'; minSdk 26; targetSdk 34; versionCode 9; versionName '1.1.7' }
+    defaultConfig { applicationId 'com.mono.keys'; minSdk 26; targetSdk 34; versionCode 10; versionName '1.1.8' }
     compileOptions { sourceCompatibility JavaVersion.VERSION_17; targetCompatibility JavaVersion.VERSION_17 }
     buildTypes { release { minifyEnabled false } }
 }
