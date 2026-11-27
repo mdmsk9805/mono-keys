@@ -30,7 +30,11 @@ dot-matrix (Doto) accents.
 
 ## Build
 
-Standard Gradle build (`./gradlew assembleRelease`). Min SDK 26, target 34.
+Standard Gradle build (`gradle assembleRelease`). Min SDK 26, target 34.
+
+Two sets of files are not in this repository because the GitHub web uploader cannot take them, so a fresh clone needs two extra steps before it matches the released APK:
+1. Fonts: put Doto (`doto.ttf`) and a Bengali font (`bengali.ttf`) in `app/src/main/assets/fonts/` (see "Fonts" below). Without them the keyboard falls back to the system font.
+2. English word list: download `en_50k.txt` and `words_alpha.txt` (links in `tools/build_wordlist.py`) into `tools/`, then run `python3 tools/build_wordlist.py` inside `tools/`. It writes `app/src/main/assets/words_en.txt`. Without it the keyboard still works but shows no English suggestions.
 
 ## Direct Bangla layout
 Letter positions follow a Probhat-style QWERTY arrangement (base layer, with the
@@ -40,7 +44,9 @@ consonant, a permanent number row, a numbers-only pad (via ?123 then 1234), and
 double-space to choose `.`, `,` or `।`.
 
 ## English suggestions
-`app/src/main/assets/words_en.txt` is an offline list of 30,000 common English words, most frequent first. It is built from Peter Norvig's `count_1w.txt` word-frequency list (derived from the Google Web Trillion Word Corpus; Norvig publishes his code under MIT and the data on his ngrams page) filtered through the public-domain `words_alpha.txt` list from dwyl/english-words. Check those sources' terms yourself before reusing the list. Suggestions show on the strip: completions first, then one-edit spelling fixes. Nothing is ever changed unless you tap a suggestion. They are off in password fields and while a fancy text style is active. There is no learning of your own words, and no Bangla dictionary.
+`app/src/main/assets/words_en.txt` is an offline list of 30,000 English words, most frequent first. It is built by `tools/build_wordlist.py` from the OpenSubtitles-based frequency list in hermitdave/FrequencyWords (`en_50k.txt`, 2018), keeping only entries that are also in dwyl/english-words `words_alpha.txt` (public domain, used only as a spelling filter). The frequency content is CC BY-SA 4.0 (see `licenses/FrequencyWords-CC-BY-SA-4.0.txt`); it ships as a separate data file, and the app code stays MIT. If you redistribute the word list, keep that notice and the same licence. The list comes from film and TV subtitles, so it leans conversational and may contain a few odd entries.
+
+Suggestions show on the strip: completions first, then one-edit spelling fixes. Nothing is ever changed unless you tap a suggestion. They work with the fancy text styles too (the suggested word is re-styled). They are off in password fields and in Bangla. No learning of your own words, no next-word prediction, no Bangla dictionary.
 
 ## Licenses
 
