@@ -31,6 +31,10 @@ public class KeyController {
 
     String bnMode = "direct";
     String style = "Normal";
+    private WordDictionary dict;
+    private List<String> dictSugs = new ArrayList<>();
+    private boolean wordCap = false;
+    public void setDictionary(WordDictionary d) { dict = d; }
     private String lastAlpha = "en";
     private final StringBuilder word = new StringBuilder();
     private final StringBuilder composing = new StringBuilder();
@@ -68,6 +72,9 @@ public class KeyController {
 
     public void onStartInput(EditorInfo info) {
         sensitive = isSensitive(info);
+        String m = strip.mode();
+        if (m.equals("bn_phon") && !bnMode.equals("phonetic")) strip.setMode("bn_direct");
+        else if (m.equals("bn_direct") && bnMode.equals("phonetic")) strip.setMode("bn_phon");
         word.setLength(0);
         composing.setLength(0);
         styleStripOpen = false;
@@ -93,6 +100,14 @@ public class KeyController {
         punctChoices = new ArrayList<>();
         if (action != KeyboardView.A_TEXT) lastTyped = 0;
         switch (action) {
+            case KeyboardView.A_BNMODE:
+                bnMode = bnMode.equals("phonetic") ? "direct" : "phonetic";
+                prefs.put("bn_mode", bnMode);
+                composing.setLength(0);
+                ic.finishComposingText();
+                lastTyped = 0;
+                setAlpha("bn");
+                return;
             case KeyboardView.A_NUM:
                 strip.setMode("num");
                 updateCandidates();
@@ -177,7 +192,10 @@ public class KeyController {
         if (strip.mode().equals("en") && c != 0 && Character.isLetter(c) && c < 0x80) {
             String styled = sensitive ? null : UnicodeStyles.map(strip.shifted() ? Character.toUpperCase(c) : c, style);
             ic.commitText(styled != null ? styled : String.valueOf(c), 1);
-            if (!sensitive) word.append(Character.toLowerCase(c));
+            if (!sensitive) {
+                if (word.length() == 0) wordCap = strip.shifted();
+                word.append(Character.toLowerCase(c));
+            }
         } else {
             ic.commitText(text, 1);
             if (c != 0 && (Character.isLetter(c) || banglaChar) && !sensitive) word.append(Character.toLowerCase(c));
@@ -218,6 +236,7 @@ public class KeyController {
     void updateCandidates() {
         List<String> out = new ArrayList<>();
         stripTriggers = new ArrayList<>();
+        dictSugs = new ArrayList<>();
         if (sensitive) {
             strip.show(out, false, false);
             return; // no previews, no composition hints, nothing learned
@@ -236,6 +255,13 @@ public class KeyController {
             for (int i = 0; i < hits.size() && i < 4; i++) {
                 stripTriggers.add(hits.get(i));
                 out.add(hits.get(i)); // trigger name only: saved values are never shown on the strip
+            }
+        }
+        if (dict != null && strip.mode().equals("en") && style.equals("Normal") && word.length() > 0
+                && out.size() < 4 && punctChoices.isEmpty()) {
+            for (String w : dict.suggest(word.toString(), 4 - out.size())) {
+                dictSugs.add(w);
+                out.add(wordCap ? Character.toUpperCase(w.charAt(0)) + w.substring(1) : w);
             }
         }
         if (out.isEmpty() && strip.mode().equals("bn_direct") && isBanglaConsonant(lastTyped)) {
@@ -285,6 +311,13 @@ public class KeyController {
                 ic.deleteSurroundingText(word.length(), 0);
                 ic.commitText(full, 1);
             }
+            word.setLength(0);
+        } else if (!sensitive && !dictSugs.isEmpty() && index >= stripTriggers.size()
+                && index - stripTriggers.size() < dictSugs.size()) {
+            String w = dictSugs.get(index - stripTriggers.size());
+            if (wordCap) w = Character.toUpperCase(w.charAt(0)) + w.substring(1);
+            ic.deleteSurroundingText(word.length(), 0);
+            ic.commitText(w + " ", 1);
             word.setLength(0);
         }
         updateCandidates();
