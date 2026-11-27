@@ -59,6 +59,29 @@ public class KeyController {
     private List<String> stripTriggers = new ArrayList<>();
     private boolean styleStripOpen = false;
     private boolean sensitive = false;
+    // ---- save as shortcut (from a clip or the current field) ----
+    private String pendingSave = null;            // text being saved; held in memory only until saved or cancelled
+    private final StringBuilder nameBuf = new StringBuilder();
+    private String toast = null;
+    static final int MAX_NAME = 20;
+    static boolean validNameChar(char c) { return (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z') || (c >= '0' && c <= '9') || c == '_' || c == '-'; }
+    boolean saving() { return pendingSave != null; }
+    private void cancelSave() { pendingSave = null; nameBuf.setLength(0); }
+    private void beginSave(String text) {
+        if (store == null) { toast = "Saved text unavailable"; return; }
+        if (text == null || text.trim().isEmpty()) { toast = "Nothing to save"; return; }
+        pendingSave = text; nameBuf.setLength(0);
+        strip.setMode("en");
+    }
+    private void finishSave() {
+        String name = nameBuf.toString();
+        if (pendingSave == null || name.isEmpty() || store == null) return;
+        try { store.save(name, pendingSave); toast = "Saved as \"" + name + "\""; }
+        catch (Exception e) { toast = "Could not save"; }
+        cancelSave();
+        setAlpha(lastAlpha);
+    }
+
     private char lastTyped = 0;
     private boolean lastWasSpace = false;
     private List<String> karMarks = new ArrayList<>();
@@ -103,6 +126,7 @@ public class KeyController {
 
     public void onStartInput(EditorInfo info) {
         sensitive = isSensitive(info);
+        cancelSave(); toast = null;
         if (strip.mode().equals("clip")) setAlpha(lastAlpha);
         String m = strip.mode();
         if (m.equals("bn_phon") && !bnMode.equals("phonetic")) strip.setMode("bn_direct");
@@ -127,6 +151,17 @@ public class KeyController {
     public void onKey(String text, int action) {
         InputConnection ic = conn.get();
         if (ic == null) return;
+        toast = null;
+        if (pendingSave != null) {
+            if (action == KeyboardView.A_TEXT && text.length() == 1 && validNameChar(text.charAt(0))) {
+                if (nameBuf.length() < MAX_NAME) nameBuf.append(text.charAt(0));
+                if (strip.shifted()) strip.setShifted(false);
+                updateCandidates(); return;
+            }
+            if (action == KeyboardView.A_BACK) { if (nameBuf.length() > 0) nameBuf.setLength(nameBuf.length() - 1); updateCandidates(); return; }
+            if (action == KeyboardView.A_ENTER) { finishSave(); updateCandidates(); return; }
+            if (action == KeyboardView.A_TEXT || action == KeyboardView.A_SPACE) { updateCandidates(); return; } // not part of a name
+        }
         boolean wasSpace = lastWasSpace;
         lastWasSpace = false;
         punctChoices = new ArrayList<>();
@@ -143,6 +178,21 @@ public class KeyController {
             case KeyboardView.A_CLIP:
                 if (!sensitive) { strip.setClips(new ArrayList<>(clips)); strip.setMode("clip"); updateCandidates(); }
                 return;
+            case KeyboardView.A_CLIPSAVE: {
+                int i;
+                try { i = Integer.parseInt(text); } catch (NumberFormatException e) { return; }
+                if (!sensitive && i >= 0 && i < clips.size()) beginSave(clips.get(i));
+                updateCandidates();
+                return;
+            }
+            case KeyboardView.A_CLIPFIELD: {
+                if (sensitive) return;
+                CharSequence b = ic.getTextBeforeCursor(MAX_CLIP_CHARS, 0), a = ic.getTextAfterCursor(MAX_CLIP_CHARS, 0);
+                String all = (b == null ? "" : b.toString()) + (a == null ? "" : a.toString());
+                beginSave(all.length() > MAX_CLIP_CHARS ? null : all);
+                updateCandidates();
+                return;
+            }
             case KeyboardView.A_CLIPCLR:
                 clearClips();
                 return;
@@ -297,6 +347,15 @@ public class KeyController {
             return; // no previews, no composition hints, nothing learned
         }
         karMarks = new ArrayList<>();
+        if (pendingSave != null) {
+            boolean exists = nameBuf.length() > 0 && store != null && store.get(nameBuf.toString()) != null;
+            out.add(nameBuf.length() == 0 ? "Type a name, then SAVE" : "Name: " + nameBuf);
+            out.add(nameBuf.length() == 0 ? "-" : exists ? "REPLACE" : "SAVE");
+            out.add("CANCEL");
+            strip.show(out, false, false);
+            return;
+        }
+        if (toast != null) { out.add(toast); strip.show(out, false, false); return; }
         if (!punctChoices.isEmpty()) {
             out.addAll(punctChoices);
             strip.show(out, false, false);
@@ -339,6 +398,12 @@ public class KeyController {
     public void onCandidate(int index) {
         InputConnection ic = conn.get();
         if (ic == null) return;
+        if (pendingSave != null) {
+            if (index == 1) finishSave(); else if (index == 2) { cancelSave(); setAlpha(lastAlpha); return; }
+            updateCandidates();
+            return;
+        }
+        if (toast != null) { toast = null; updateCandidates(); return; }
         if (styleStripOpen) {
             if (index >= 0 && index < UnicodeStyles.NAMES.length) {
                 style = UnicodeStyles.NAMES[index];
