@@ -27,7 +27,9 @@ public final class WordDictionary {
     public boolean contains(String w) { return set.contains(w); }
 
     /** Up to max suggestions: completions of the prefix first, then close spellings (one edit away). */
-    public List<String> suggest(String typed, int max) {
+    public List<String> suggest(String typed, int max) { return suggest(typed, max, true); }
+
+    public List<String> suggest(String typed, int max, boolean corrections) {
         List<String> out = new ArrayList<>();
         if (typed == null || typed.isEmpty() || max <= 0) return out;
         String t = typed.toLowerCase();
@@ -36,7 +38,7 @@ public final class WordDictionary {
             if (out.size() >= max) break;
             if (w.length() > t.length() && w.startsWith(t)) out.add(w);
         }
-        if (!known && t.length() >= 3) {
+        if (corrections && !known && t.length() >= 3) {
             for (String w : words) {
                 if (out.size() >= max) break;
                 if (Math.abs(w.length() - t.length()) <= 1 && !out.contains(w) && oneEdit(t, w)) out.add(w);
