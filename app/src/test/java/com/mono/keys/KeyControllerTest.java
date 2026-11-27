@@ -303,4 +303,26 @@ public class KeyControllerTest {
         ctl.onKey("ABC", KeyboardView.A_ABC);
         assertEquals("en", strip.mode);
     }
+
+    @Test public void spaceAfterKarOptionsClearsStripAndRestoresBase() {
+        startField(InputType.TYPE_CLASS_TEXT);
+        ctl.onKey("", KeyboardView.A_LANG);
+        ctl.onKey("⇧", KeyboardView.A_SHIFT);
+        ctl.onKey("খ", KeyboardView.A_TEXT);
+        assertEquals(10, strip.last.size()); // kar options visible
+        assertFalse(strip.shift);            // one-shot shift already released
+        ctl.onKey("⇧", KeyboardView.A_SHIFT);
+        ctl.onKey("space", KeyboardView.A_SPACE);
+        assertEquals("খ ", text());
+        assertTrue(strip.last.isEmpty());    // contextual strip gone
+        assertFalse(strip.shift);            // base layer
+        assertEquals("bn_direct", strip.mode);
+    }
+
+    @Test public void banglaRow3KeysAreRealMarks() {
+        assertEquals("ৃ", KeyboardView.BN[2][7]);
+        assertEquals("্", KeyboardView.BN[2][8]);
+        assertEquals("ঁ", KeyboardView.BN_SHIFT[2][8]);
+        assertEquals("ৎ".length(), 1);
+    }
 }
