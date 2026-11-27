@@ -39,6 +39,9 @@ screenshot, not a certified standard. Extras: contextual kar options after a
 consonant, a permanent number row, a numbers-only pad (via ?123 then 1234), and
 double-space to choose `.`, `,` or `।`.
 
+## English suggestions
+`app/src/main/assets/words_en.txt` is an offline list of 30,000 common English words, most frequent first. It is built from Peter Norvig's `count_1w.txt` word-frequency list (derived from the Google Web Trillion Word Corpus; Norvig publishes his code under MIT and the data on his ngrams page) filtered through the public-domain `words_alpha.txt` list from dwyl/english-words. Check those sources' terms yourself before reusing the list. Suggestions show on the strip: completions first, then one-edit spelling fixes. Nothing is ever changed unless you tap a suggestion. They are off in password fields and while a fancy text style is active. There is no learning of your own words, and no Bangla dictionary.
+
 ## Licenses
 
 Code: MIT (see LICENSE). Bundled fonts Doto and Noto Sans Bengali are
