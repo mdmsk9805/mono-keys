@@ -322,13 +322,16 @@ public class KeyController {
         karToggleShown = false;
         boolean bnDirect = strip.mode().equals("bn_direct");
         if (bnDict != null && bnDirect && word.length() > 0 && !karOpen && out.size() < 4 && punctChoices.isEmpty()) {
-            int room = isBanglaConsonant(lastTyped) ? 3 - out.size() : 4 - out.size();
+            int room = 3 - out.size();
             if (room > 0) for (String w : bnDict.suggest(word.toString(), room, false)) { dictSugs.add(w); out.add(w); }
-            if (!dictSugs.isEmpty() && isBanglaConsonant(lastTyped)) { out.add(KAR_TOGGLE); karToggleShown = true; }
+            out.add(KAR_TOGGLE); karToggleShown = true; // kar access stays after any word or kar
         }
-        if (bnDirect && isBanglaConsonant(lastTyped) && (karOpen || out.isEmpty())) {
+        boolean wordOpen = bnDict != null && bnDirect && word.length() > 0;
+        if (bnDirect && ((karOpen && wordOpen) || (isBanglaConsonant(lastTyped) && out.isEmpty()))) {
+            char base = word.length() > 0 && isBanglaConsonant(word.charAt(word.length() - 1)) ? word.charAt(word.length() - 1) : lastTyped;
+            boolean showBase = isBanglaConsonant(base);
             out.clear(); dictSugs = new ArrayList<>(); stripTriggers = new ArrayList<>(); karToggleShown = false;
-            for (String k : KAR) { karMarks.add(k); out.add(String.valueOf(lastTyped) + k); }
+            for (String k : KAR) { karMarks.add(k); out.add(showBase ? String.valueOf(base) + k : k); }
         }
         strip.show(out, false, banglaPhonetic() && composing.length() > 0);
     }
