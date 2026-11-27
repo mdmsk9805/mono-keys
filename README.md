@@ -66,3 +66,7 @@ https://github.com/oliverlalan/Doto) and `app/src/main/assets/fonts/bengali.ttf`
 (Noto Sans Bengali, from https://github.com/notofonts/bengali or Google Fonts).
 Both are SIL OFL 1.1; license texts are in `licenses/`. If a font is missing the
 app falls back to the system font.
+
+## Saving your own text as shortcuts (v1.1.8)
+
+Open the clipboard panel (?123, then CLIP). Each clip has a SAVE key; FIELD saves everything in the current text field. Type a name (letters, digits, - and _ only; it goes into the name box, not the app), tap SAVE (or REPLACE if the name exists) or press Enter. Later, type the name in any field and tap the suggestion to insert the full text. The suggestion strip only ever shows the name, never the saved text. Saved text is encrypted with an Android Keystore key and kept only on the device; viewing and editing in Settings needs your fingerprint or screen lock. Saving is disabled in password and other sensitive fields. Saved text is not backed up and is deleted on uninstall.
