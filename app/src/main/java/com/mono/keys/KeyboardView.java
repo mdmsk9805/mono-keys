@@ -16,7 +16,8 @@ import java.util.List;
  *  rounded keys, big touch targets, dot-matrix accent font (Doto). */
 public class KeyboardView extends View {
     public static final int A_TEXT = 0, A_BACK = 1, A_ENTER = 2, A_SHIFT = 3,
-        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9, A_BNMODE = 10;
+        A_SYM = 4, A_ABC = 5, A_LANG = 6, A_STYLE = 7, A_SPACE = 8, A_NUM = 9, A_BNMODE = 10,
+        A_CLIP = 11, A_CLIPPICK = 12, A_CLIPCLR = 13, A_NONE = 14;
 
     public interface Listener {
         void onKey(String text, int action);
@@ -24,7 +25,7 @@ public class KeyboardView extends View {
     }
 
     static final class Key {
-        String label; float weight; int action; String alt; String longText;
+        String label; float weight; int action; String alt; String longText; int idx = -1;
         Key(String l, float w, int a) { label = l; weight = w; action = a; }
         Key(String l, String alt, float w, int a) { label = l; this.alt = alt; weight = w; action = a; }
     }
@@ -164,6 +165,9 @@ public class KeyboardView extends View {
         mode = m; shifted = false; invalidate();
     }
 
+    private final List<String> clips = new ArrayList<>();
+    public void setClips(List<String> c) { clips.clear(); clips.addAll(c); invalidate(); }
+
     public void setShifted(boolean s) { shifted = s; invalidate(); }
 
     // style picker: one horizontally scrollable row of fixed-size chips (no shrinking, no overlap)
@@ -200,6 +204,7 @@ public class KeyboardView extends View {
         boolean bnDirect = mode.equals("bn_direct");
         boolean bnAny = bnDirect || mode.equals("bn_phon");
         if (mode.equals("num")) { buildNumPad(); return; }
+        if (mode.equals("clip")) { buildClipPanel(); return; }
         // permanent number row
         List<Key> nr = new ArrayList<>();
         String[] dig = (bnAny || (mode.equals("sym") && symFromBangla)) ? DIG_BN : DIG_EN;
@@ -241,7 +246,7 @@ public class KeyboardView extends View {
         List<Key> bottom = new ArrayList<>();
         boolean sym = mode.equals("sym");
         bottom.add(new Key(sym ? "ABC" : "?123", 1.3f, sym ? A_ABC : A_SYM));
-        if (sym) bottom.add(new Key("1234", 1.3f, A_NUM));
+        if (sym) { bottom.add(new Key("1234", 1.3f, A_NUM)); bottom.add(new Key("CLIP", 1.3f, A_CLIP)); }
         else if (mode.equals("en")) bottom.add(new Key("Aa", 1.2f, A_STYLE));
         if (!sym) bottom.add(new Key(bnAny ? "EN" : "অ", 1.2f, A_LANG));
         bottom.add(new Key(bnDirect ? "," : ",", 1f, A_TEXT));
@@ -250,6 +255,26 @@ public class KeyboardView extends View {
         if (bnAny) bottom.add(new Key(".", 1f, A_TEXT));
         bottom.add(new Key("⏎", 1.4f, A_ENTER));
         rows.add(bottom); rowHeights.add(ROW_DP);
+    }
+
+    private static String clipPreview(String t) {
+        String one = t.replaceAll("\\s+", " ").trim();
+        return one.length() > 34 ? one.substring(0, 33) + "\u2026" : one;
+    }
+
+    private void buildClipPanel() {
+        List<Key> head = new ArrayList<>();
+        head.add(new Key("ABC", 1f, A_ABC));
+        head.add(new Key("CLEAR ALL", 1.4f, A_CLIPCLR));
+        rows.add(head); rowHeights.add(42f);
+        int n = Math.min(4, clips.size());
+        for (int i = 0; i < 4; i++) {
+            List<Key> row = new ArrayList<>();
+            if (i < n) { Key k = new Key(clipPreview(clips.get(i)), 1f, A_CLIPPICK); k.idx = i; row.add(k); }
+            else if (i == 0) row.add(new Key("Nothing copied yet", 1f, A_NONE));
+            else row.add(new Key("", 1f, A_NONE));
+            rows.add(row); rowHeights.add(ROW_DP);
+        }
     }
 
     private void buildNumPad() {
@@ -296,7 +321,7 @@ public class KeyboardView extends View {
                 keyPaint.setColor(idx == pressedIdx ? theme.accent : special ? shade(theme.keyBg) : theme.keyBg);
                 c.drawRoundRect(rect, dp(8), dp(8), keyPaint);
                 boolean bnLabel = looksBengali(k.label);
-                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_NUM || k.action == A_STYLE
+                textPaint.setTypeface((k.action == A_SYM || k.action == A_ABC || k.action == A_NUM || k.action == A_STYLE || k.action == A_CLIP || k.action == A_CLIPCLR
                         || (k.action == A_LANG && !bnLabel)) ? doto : bnLabel ? bengali : Typeface.DEFAULT_BOLD);
                 textPaint.setColor(idx == pressedIdx ? 0xFFFFFFFF : active ? theme.accent : theme.keyText);
                 textPaint.setTextSize(bnLabel ? dp(18) : (k.label.length() >= 3 && k.action != A_SPACE ? dp(13) : dp(17)));
@@ -333,7 +358,7 @@ public class KeyboardView extends View {
         if (candidates.isEmpty()) {
             textPaint.setTypeface(doto);
             textPaint.setColor(theme.stripText);
-            String hint = mode.equals("bn_direct") ? "বাংলা · DIRECT ⇄" : mode.equals("bn_phon") ? "বাংলা · PHONETIC ⇄" : mode.equals("sym") ? "123"
+            String hint = mode.equals("bn_direct") ? "বাংলা · DIRECT ⇄" : mode.equals("bn_phon") ? "বাংলা · PHONETIC ⇄" : mode.equals("sym") ? "123" : mode.equals("clip") ? "CLIPBOARD · THIS SESSION ONLY"
                     : activeStyle.equals("Normal") ? "MONO KEYS" : activeStyle.toUpperCase();
             c.drawText(hint, w / 2, stripH / 2 + dp(6), textPaint);
             return;
@@ -475,7 +500,7 @@ public class KeyboardView extends View {
                 int idx = findKey(x, y);
                 if (!longFired && idx >= 0 && idx == pressedIdx && listener != null) {
                     Key k = flatKeys.get(idx);
-                    listener.onKey(k.label, k.action);
+                    listener.onKey(k.action == A_CLIPPICK ? String.valueOf(k.idx) : k.label, k.action);
                 }
                 pressedIdx = -1;
                 invalidate();
