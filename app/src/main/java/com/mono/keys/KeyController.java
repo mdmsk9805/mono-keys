@@ -13,7 +13,7 @@ public class KeyController {
     public interface Conn { InputConnection get(); }
     public interface Strip {
         void show(List<String> items, boolean isStylePicker, boolean banglaPhonetic);
-        void setMode(String mode);      // en | bn_direct | sym
+        void setMode(String mode);      // en | bn_direct | bn_phon | sym | num
         void setShifted(boolean s);
         boolean shifted();
         String mode();
@@ -29,7 +29,7 @@ public class KeyController {
     private final Prefs prefs;
     private final ShortcutStore store; // may be null
 
-    String bnMode = "phonetic";
+    String bnMode = "direct";
     String style = "Normal";
     private String lastAlpha = "en";
     private final StringBuilder word = new StringBuilder();
@@ -37,10 +37,15 @@ public class KeyController {
     private List<String> stripTriggers = new ArrayList<>();
     private boolean styleStripOpen = false;
     private boolean sensitive = false;
+    private char lastTyped = 0;
+    private boolean lastWasSpace = false;
+    private List<String> karMarks = new ArrayList<>();
+    private List<String> punctChoices = new ArrayList<>();
+    static final String[] KAR = {"া","ি","ী","ু","ূ","ৃ","ে","ৈ","ো","ৌ"};
 
     public KeyController(Conn c, Strip s, Prefs p, ShortcutStore st) {
         conn = c; strip = s; prefs = p; store = st;
-        bnMode = prefs.get("bn_mode", "phonetic");
+        bnMode = prefs.get("bn_mode", "direct");
         style = prefs.get("style", "Normal");
         strip.setActiveStyle(style);
     }
@@ -66,23 +71,32 @@ public class KeyController {
         word.setLength(0);
         composing.setLength(0);
         styleStripOpen = false;
+        lastTyped = 0; lastWasSpace = false; punctChoices = new ArrayList<>();
         updateCandidates();
     }
 
     private boolean banglaPhonetic() {
-        return strip.mode().equals("bn_direct") && bnMode.equals("phonetic") && !sensitive;
+        return strip.mode().equals("bn_phon") && !sensitive;
     }
 
     private void setAlpha(String which) {
         lastAlpha = which;
-        strip.setMode(which.equals("bn") ? "bn_direct" : "en");
+        strip.setMode(which.equals("bn") ? (bnMode.equals("phonetic") ? "bn_phon" : "bn_direct") : "en");
         updateCandidates();
     }
 
     public void onKey(String text, int action) {
         InputConnection ic = conn.get();
         if (ic == null) return;
+        boolean wasSpace = lastWasSpace;
+        lastWasSpace = false;
+        punctChoices = new ArrayList<>();
+        if (action != KeyboardView.A_TEXT) lastTyped = 0;
         switch (action) {
+            case KeyboardView.A_NUM:
+                strip.setMode("num");
+                updateCandidates();
+                return;
             case KeyboardView.A_BACK:
                 if (banglaPhonetic() && composing.length() > 0) {
                     composing.deleteCharAt(composing.length() - 1);
@@ -114,7 +128,16 @@ public class KeyController {
                 return;
             case KeyboardView.A_SPACE:
                 flush(ic);
+                if (strip.shifted()) strip.setShifted(false); // space returns to the default layer
+                if (wasSpace && !sensitive && !strip.mode().equals("num") && endsWithSpace(ic)) {
+                    punctChoices = new ArrayList<>();
+                    punctChoices.add(".");
+                    punctChoices.add(",");
+                    if (strip.mode().startsWith("bn")) punctChoices.add("।");
+                    break; // no second space: offer dot / comma instead
+                }
                 ic.commitText(" ", 1);
+                lastWasSpace = true;
                 break;
             default:
                 type(ic, text);
@@ -160,7 +183,17 @@ public class KeyController {
             if (c != 0 && (Character.isLetter(c) || banglaChar) && !sensitive) word.append(Character.toLowerCase(c));
             else word.setLength(0);
         }
-        if (strip.shifted() && !strip.mode().equals("bn_direct")) strip.setShifted(false);
+        lastTyped = (banglaChar && !sensitive) ? c : 0;
+        if (strip.shifted()) strip.setShifted(false);
+    }
+
+    private static boolean endsWithSpace(InputConnection ic) {
+        CharSequence b = ic.getTextBeforeCursor(1, 0);
+        return b != null && b.length() == 1 && b.charAt(0) == ' ';
+    }
+
+    static boolean isBanglaConsonant(char c) {
+        return (c >= 0x0995 && c <= 0x09B9) || c == 0x09DC || c == 0x09DD || c == 0x09DF;
     }
 
     private static boolean isRoman(char c) {
@@ -189,6 +222,12 @@ public class KeyController {
             strip.show(out, false, false);
             return; // no previews, no composition hints, nothing learned
         }
+        karMarks = new ArrayList<>();
+        if (!punctChoices.isEmpty()) {
+            out.addAll(punctChoices);
+            strip.show(out, false, false);
+            return;
+        }
         if (banglaPhonetic() && composing.length() > 0) {
             out.add(BanglaTransliterator.convert(composing.toString()));
             out.add(composing.toString());
@@ -198,6 +237,9 @@ public class KeyController {
                 stripTriggers.add(hits.get(i));
                 out.add(hits.get(i)); // trigger name only: saved values are never shown on the strip
             }
+        }
+        if (out.isEmpty() && strip.mode().equals("bn_direct") && isBanglaConsonant(lastTyped)) {
+            for (String k : KAR) { karMarks.add(k); out.add(String.valueOf(lastTyped) + k); }
         }
         strip.show(out, false, banglaPhonetic() && composing.length() > 0);
     }
@@ -212,6 +254,24 @@ public class KeyController {
                 strip.setActiveStyle(style);
             }
             styleStripOpen = false;
+            updateCandidates();
+            return;
+        }
+        if (!punctChoices.isEmpty()) {
+            if (index >= 0 && index < punctChoices.size()) {
+                String p = punctChoices.get(index);
+                if (endsWithSpace(ic)) ic.deleteSurroundingText(1, 0);
+                ic.commitText(p + " ", 1);
+            }
+            punctChoices = new ArrayList<>();
+            lastWasSpace = false; lastTyped = 0;
+            updateCandidates();
+            return;
+        }
+        if (!karMarks.isEmpty()) {
+            if (index >= 0 && index < karMarks.size()) ic.commitText(karMarks.get(index), 1);
+            karMarks = new ArrayList<>();
+            lastTyped = 0; word.setLength(0);
             updateCandidates();
             return;
         }
