@@ -6,6 +6,7 @@ import android.content.Context;
 import android.content.SharedPreferences;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
+import android.graphics.RectF;
 
 import androidx.test.core.app.ApplicationProvider;
 
@@ -426,5 +427,79 @@ public class MonoKeysTest {
         assertEquals(UnicodeStyles.map('t', "Bold") + UnicodeStyles.map('o', "Bold"), edText(ic).substring(0, 4));
         assertTrue(edText(ic).endsWith(" "));
         assertEquals(17, edText(ic).length());
+    }
+
+    // ---- style picker: no overlap, scrollable, tap vs drag, active visible ----
+    private KeyboardView styleKb(Context ctx, float density, int widthPx, String active, List<String> tapped) throws Exception {
+        ctx.getResources().getDisplayMetrics().density = density;
+        loadRealFonts(ctx);
+        KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setTheme(KeyboardView.themeFor("mono", 0));
+        kb.setActiveStyle(active);
+        java.util.List<String> names = new java.util.ArrayList<>();
+        for (String n : UnicodeStyles.NAMES) names.add(n);
+        kb.setCandidates(names, true);
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) {}
+            @Override public void onCandidate(int i) { tapped.add(UnicodeStyles.NAMES[i]); }
+        });
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(widthPx, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, widthPx, kb.getMeasuredHeight());
+        kb.draw(new Canvas(Bitmap.createBitmap(widthPx, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888)));
+        return kb;
+    }
+
+    @Test public void stylePickerChipsNeverOverlapAtPhoneWidths() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        float[][] cfg = {{3.0f, 1080}, {2.625f, 945}, {2.0f, 720}, {4.0f, 1440}, {3.0f, 1000}};
+        for (float[] c : cfg) {
+            KeyboardView kb = styleKb(ctx, c[0], (int) c[1], "Normal", new java.util.ArrayList<>());
+            assertEquals(8, kb.stripCount());
+            for (int i = 1; i < 8; i++) {
+                RectF a = kb.stripRectForTest(i - 1), b = kb.stripRectForTest(i);
+                assertTrue("overlap at density " + c[0] + " chip " + i, b.left >= a.right);
+                assertTrue(b.width() >= 64 * c[0] - 1); // min 64dp, readable
+            }
+        }
+    }
+
+    @Test public void stylePickerScrollsAndTapVsDrag() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        List<String> tapped = new java.util.ArrayList<>();
+        KeyboardView kb = styleKb(ctx, 3.0f, 1080, "Normal", tapped);
+        assertTrue("last chip starts off-screen so row must scroll", kb.stripRectForTest(7).right > 1080);
+        // tap on chip 1 (Bold) selects it
+        float[] p = kb.stripCenter(1);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, p);
+        ev(kb, android.view.MotionEvent.ACTION_UP, p);
+        assertEquals(java.util.Arrays.asList("Bold"), tapped);
+        // drag left by 500px scrolls and selects nothing
+        tapped.clear();
+        float x0 = kb.stripRectForTest(0).left;
+        long t = android.os.SystemClock.uptimeMillis();
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_DOWN, 1000, 60, 0));
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_MOVE, 50, 60, 0));
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t, t, android.view.MotionEvent.ACTION_UP, 50, 60, 0));
+        kb.draw(new Canvas(Bitmap.createBitmap(1080, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888)));
+        assertTrue(tapped.isEmpty());
+        assertTrue("scrolled", kb.stripRectForTest(0).left < x0 - 100);
+        assertTrue("last chip now fully visible, right=" + kb.stripRectForTest(7).right + " left0=" + kb.stripRectForTest(0).left, kb.stripRectForTest(7).right <= 1080 - 8 * 3 + 1);
+        snap(kb, "kb_style_picker_scrolled.png");
+        // after scroll, tapping the last chip selects Mono
+        float[] q = kb.stripCenter(7);
+        ev(kb, android.view.MotionEvent.ACTION_DOWN, q);
+        ev(kb, android.view.MotionEvent.ACTION_UP, q);
+        assertEquals(java.util.Arrays.asList("Mono"), tapped);
+    }
+
+    @Test public void stylePickerOpensWithActiveStyleVisibleAndHighlighted() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        KeyboardView kb = styleKb(ctx, 3.0f, 1080, "Mono", new java.util.ArrayList<>());
+        RectF r = kb.stripRectForTest(7);
+        assertTrue(r.left >= 0 && r.right <= 1080);
+        snap(kb, "kb_style_picker_open.png");
+        KeyboardView kb2 = styleKb(ctx, 3.0f, 1080, "Normal", new java.util.ArrayList<>());
+        snap(kb2, "kb_style_picker_normal.png");
     }
 }
