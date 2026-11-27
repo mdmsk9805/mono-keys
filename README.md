@@ -36,3 +36,11 @@ Standard Gradle build (`./gradlew assembleRelease`). Min SDK 26, target 34.
 
 Code: MIT (see LICENSE). Bundled fonts Doto and Noto Sans Bengali are
 SIL Open Font License 1.1 (full texts in licenses/).
+
+## Fonts (not in this repository)
+The two font files are not committed here. Before building, download them and
+save as `app/src/main/assets/fonts/doto.ttf` (Doto, from
+https://github.com/oliverlalan/Doto) and `app/src/main/assets/fonts/bengali.ttf`
+(Noto Sans Bengali, from https://github.com/notofonts/bengali or Google Fonts).
+Both are SIL OFL 1.1; license texts are in `licenses/`. If a font is missing the
+app falls back to the system font.
