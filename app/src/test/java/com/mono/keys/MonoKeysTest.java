@@ -105,6 +105,12 @@ public class MonoKeysTest {
         render(ctx, "en", false, false, java.util.Arrays.asList("আমি", "ami"), "kb_phonetic.png");
         render(ctx, "en", false, false, java.util.Arrays.asList("iq: IQAMA 2222 3333 4…", "em: me@example.com"), "kb_shortcut.png");
         render(ctx, "en", false, true, null, "kb_styles.png");
+        render(ctx, "sym", false, false, null, "kb_sym.png");
+        render(ctx, "num", false, false, null, "kb_num.png");
+        List<String> kar = new java.util.ArrayList<>();
+        for (String k : KeyController.KAR) kar.add("ম" + k);
+        render(ctx, "bn_direct", false, false, kar, "kb_bn_kar.png");
+        render(ctx, "en", false, false, java.util.Arrays.asList(".", ","), "kb_punct.png");
     }
 
     @Test public void settingsScreenRenders() throws Exception {
