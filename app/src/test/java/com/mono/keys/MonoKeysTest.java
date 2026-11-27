@@ -197,4 +197,33 @@ public class MonoKeysTest {
         bmp.compress(Bitmap.CompressFormat.PNG, 100, fos);
         fos.close();
     }
+
+    @Test public void longPressInsertsAlternates() throws Exception {
+        Context ctx = ApplicationProvider.getApplicationContext();
+        ctx.getResources().getDisplayMetrics().density = 3.0f;
+        loadRealFonts(ctx);
+        KeyboardView kb = new KeyboardView(ctx, null);
+        kb.setMode("bn_direct");
+        final List<String> got = new java.util.ArrayList<>();
+        kb.setListener(new KeyboardView.Listener() {
+            @Override public void onKey(String t, int a) { got.add(t); }
+            @Override public void onCandidate(int i) {}
+        });
+        int w = 1080;
+        kb.measure(android.view.View.MeasureSpec.makeMeasureSpec(w, android.view.View.MeasureSpec.EXACTLY),
+                android.view.View.MeasureSpec.makeMeasureSpec(0, android.view.View.MeasureSpec.UNSPECIFIED));
+        kb.layout(0, 0, w, kb.getMeasuredHeight());
+        Bitmap bmp = Bitmap.createBitmap(w, kb.getMeasuredHeight(), Bitmap.Config.ARGB_8888);
+        kb.draw(new Canvas(bmp));
+        float[] p = kb.keyCenter("য়");
+        long t0 = android.os.SystemClock.uptimeMillis();
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0, android.view.MotionEvent.ACTION_DOWN, p[0], p[1], 0));
+        org.robolectric.shadows.ShadowLooper.idleMainLooper(600, java.util.concurrent.TimeUnit.MILLISECONDS);
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0 + 700, android.view.MotionEvent.ACTION_UP, p[0], p[1], 0));
+        assertEquals(java.util.Arrays.asList("্য"), got); // long press only, no extra short tap
+        got.clear();
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0, android.view.MotionEvent.ACTION_DOWN, p[0], p[1], 0));
+        kb.onTouchEvent(android.view.MotionEvent.obtain(t0, t0 + 50, android.view.MotionEvent.ACTION_UP, p[0], p[1], 0));
+        assertEquals(java.util.Arrays.asList("য়"), got); // short tap still types the key
+    }
 }
